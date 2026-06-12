@@ -4,7 +4,7 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  const { vt: vtKey, aipdb: aipdbKey, ipqs: ipqsKey } = req.query;
+  const { vt: vtKey, aipdb: aipdbKey } = req.query;
   const result = {};
 
   // ── VirusTotal ──────────────────────────────────────────────────
@@ -76,35 +76,6 @@ export default async function handler(req, res) {
     }
   }
 
-  // ── IPQualityScore ──────────────────────────────────────────────
-  if (ipqsKey) {
-    try {
-      // IPQS account endpoint returns credit balance
-      const r = await fetch(
-        `https://ipqualityscore.com/api/json/account/${encodeURIComponent(ipqsKey)}`,
-        { signal: AbortSignal.timeout(12000) }
-      );
-      if (r.ok) {
-        const d = await r.json();
-        if (d.success) {
-          result.ipqs = {
-            credits_used:      d.credits_used      ?? null,
-            credits_remaining: d.credits_remaining ?? null,
-            daily_limit:       d.total_credits     ?? null,
-            plan:              d.account_type       || 'free',
-          };
-        } else {
-          result.ipqs = { error: d.message || 'IPQS account error' };
-        }
-      } else if (r.status === 401) {
-        result.ipqs = { error: 'Invalid API key (401)' };
-      } else {
-        result.ipqs = { error: `IPQS HTTP ${r.status}` };
-      }
-    } catch (e) {
-      result.ipqs = { error: e.message };
-    }
-  }
 
   return res.status(200).json(result);
 }
