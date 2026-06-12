@@ -1205,6 +1205,7 @@ async function fetchIPQS(ip, apiKey) {
   return apiCall(
     `/api/ipqs?ip=${encodeURIComponent(ip)}&key=${encodeURIComponent(apiKey)}`,
     async () => {
+      // Local fallback: IPQS puts key in URL path so no CORS issue
       try {
         const r = await fetch(
           `https://ipqualityscore.com/api/json/ip/${encodeURIComponent(apiKey)}/${encodeURIComponent(ip)}?strictness=1&allow_public_access_points=true`,
@@ -1212,7 +1213,7 @@ async function fetchIPQS(ip, apiKey) {
         );
         if (!r.ok) return { error: `HTTP ${r.status}` };
         const d = await r.json();
-        if (!d.success) return { error: d.message };
+        if (!d.success) return { error: d.message || 'IPQS error — check your plan credits' };
         return {
           fraud_score: d.fraud_score, proxy: d.proxy, vpn: d.vpn, tor: d.tor,
           bot_status: d.bot_status, recent_abuse: d.recent_abuse,
@@ -1318,7 +1319,7 @@ function renderCard(ip) {
         <span class="expand-btn">▾</span>
       </div>
       <div class="card-detail">
-        ${isLoading ? buildSkeleton() : buildDetail(d)}
+        ${isLoading ? buildSkeleton() : buildDetail(d, d.ip)}
         ${!isLoading ? `<button class="copy-btn" onclick="event.stopPropagation();copyResult('${ip}')">⎘ Copy JSON</button>` : ''}
       </div>
     </div>`;
@@ -1355,7 +1356,7 @@ function buildSkeleton() {
   </div>`;
 }
 
-function buildDetail(d) {
+function buildDetail(d, ip) {
   const blocks = [];
 
   // ip-api block

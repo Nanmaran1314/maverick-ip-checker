@@ -1,5 +1,4 @@
 export default async function handler(req, res) {
-  // CORS headers so the browser can call this endpoint
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -37,7 +36,8 @@ export default async function handler(req, res) {
       country:    data?.data?.attributes?.country,
       asOwner:    data?.data?.attributes?.as_owner,
       reputation: data?.data?.attributes?.reputation,
-      malEngines: malEngines.slice(0, 5),
+      network:    data?.data?.attributes?.network,
+      malEngines: malEngines.slice(0, 8),
     });
   } catch (e) {
     return res.status(500).json({ error: 'Proxy error: ' + e.message });

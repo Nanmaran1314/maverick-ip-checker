@@ -17,15 +17,16 @@ export default async function handler(req, res) {
     );
 
     if (upstream.status === 401 || upstream.status === 403)
-      return res.status(401).json({ error: 'Invalid API key' });
+      return res.status(upstream.status).json({ error: 'Invalid API key' });
     if (upstream.status === 429)
-      return res.status(429).json({ error: 'Daily limit reached (1000/day free)' });
+      return res.status(429).json({ error: 'Daily limit reached (1,000/day on free tier)' });
     if (!upstream.ok)
       return res.status(upstream.status).json({ error: `AbuseIPDB HTTP ${upstream.status}` });
 
-    const data = await upstream.json();
-    const d = data?.data || {};
+    const json = await upstream.json();
+    if (!json?.data) return res.status(500).json({ error: json?.errors?.[0]?.detail || 'No data returned' });
 
+    const d = json.data;
     return res.status(200).json({
       abuseConfidenceScore: d.abuseConfidenceScore,
       totalReports:         d.totalReports,

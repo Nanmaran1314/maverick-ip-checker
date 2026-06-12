@@ -4,109 +4,102 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  const { vt, aipdb, ipqs } = req.query;
+  const { vt: vtKey, aipdb: aipdbKey, ipqs: ipqsKey } = req.query;
   const result = {};
 
-  // ── VirusTotal ──────────────────────────────────────────────────────
-  // GET /api/v3/users/{id} but we don't know the user id without auth
-  // Instead, hit /users/me — VT returns quota info in the user object
-  if (vt) {
+  // ── VirusTotal ──────────────────────────────────────────────────
+  if (vtKey) {
     try {
       const r = await fetch('https://www.virustotal.com/api/v3/users/me', {
-        headers: { 'x-apikey': vt },
-        signal: AbortSignal.timeout(10000),
+        headers: { 'x-apikey': vtKey },
+        signal: AbortSignal.timeout(12000),
       });
-      if (r.status === 401) {
-        result.vt = { error: 'Invalid API key' };
-      } else if (r.ok) {
-        const data = await r.json();
-        const quotas = data?.data?.attributes?.quotas || {};
-        // api_requests_daily / hourly / monthly
-        const daily   = quotas.api_requests_daily   || {};
-        const hourly  = quotas.api_requests_hourly  || {};
-        const monthly = quotas.api_requests_monthly || {};
+      if (r.ok) {
+        const d = await r.json();
+        const q     = d?.data?.attributes?.quotas || {};
+        const daily = q.api_requests_daily || {};
+        const monthly = q.api_requests_monthly || {};
         result.vt = {
-          plan: data?.data?.attributes?.status || 'free',
-          daily_used:      daily.used   ?? null,
-          daily_limit:     daily.allowed ?? null,
-          hourly_used:     hourly.used   ?? null,
-          hourly_limit:    hourly.allowed ?? null,
-          monthly_used:    monthly.used   ?? null,
-          monthly_limit:   monthly.allowed ?? null,
+          daily_used:     daily.used    ?? null,
+          daily_limit:    daily.allowed ?? null,
+          monthly_used:   monthly.used  ?? null,
+          monthly_limit:  monthly.allowed ?? null,
+          plan:           d?.data?.attributes?.status || 'free',
         };
+      } else if (r.status === 401) {
+        result.vt = { error: 'Invalid API key (401)' };
       } else {
-        result.vt = { error: `HTTP ${r.status}` };
+        result.vt = { error: `VT HTTP ${r.status}` };
       }
     } catch (e) {
       result.vt = { error: e.message };
     }
   }
 
-  // ── AbuseIPDB ────────────────────────────────────────────────────────
-  // The /check endpoint returns X-RateLimit-* headers AND the response
-  // body has no quota info — but /api/v2/report uses RateLimit headers.
-  // Best approach: hit /api/v2/check on a well-known benign IP (1.1.1.1)
-  // and read the response headers.
-  if (aipdb) {
+  // ── AbuseIPDB ───────────────────────────────────────────────────
+  if (aipdbKey) {
     try {
+      // AbuseIPDB doesn't have a dedicated quota endpoint on free tier.
+      // We check by making a test call to /api/v2/check with a well-known IP
+      // and reading the X-RateLimit-* headers.
       const r = await fetch(
         'https://api.abuseipdb.com/api/v2/check?ipAddress=1.1.1.1&maxAgeInDays=1',
         {
-          headers: { 'Key': aipdb, 'Accept': 'application/json' },
-          signal: AbortSignal.timeout(10000),
+          headers: { 'Key': aipdbKey, 'Accept': 'application/json' },
+          signal: AbortSignal.timeout(12000),
         }
       );
       if (r.status === 401 || r.status === 403) {
         result.aipdb = { error: 'Invalid API key' };
       } else if (r.ok) {
-        // AbuseIPDB returns quota in response headers
-        const limit     = r.headers.get('X-RateLimit-Limit');
-        const remaining = r.headers.get('X-RateLimit-Remaining');
-        const reset     = r.headers.get('X-RateLimit-Reset');  // unix timestamp
+        // Parse rate-limit headers if present
+        const limit     = r.headers.get('X-RateLimit-Limit')     || '1000';
+        const remaining = r.headers.get('X-RateLimit-Remaining') || null;
+        const reset     = r.headers.get('X-RateLimit-Reset')     || null;
+
+        const dailyLimit = parseInt(limit, 10);
+        const dailyRemaining = remaining !== null ? parseInt(remaining, 10) : null;
+        const dailyUsed = dailyRemaining !== null ? dailyLimit - dailyRemaining : null;
+
         result.aipdb = {
-          daily_limit:     limit     ? parseInt(limit)     : 1000,
-          daily_remaining: remaining ? parseInt(remaining) : null,
-          daily_used:      (limit && remaining)
-            ? parseInt(limit) - parseInt(remaining)
-            : null,
-          resets_at: reset
-            ? new Date(parseInt(reset) * 1000).toISOString().split('T')[0]
-            : null,
+          daily_limit:     dailyLimit,
+          daily_used:      dailyUsed,
+          daily_remaining: dailyRemaining,
+          resets_on:       reset ? new Date(parseInt(reset, 10) * 1000).toISOString().split('T')[0] : null,
+          plan:            dailyLimit >= 10000 ? 'premium' : 'free',
         };
       } else {
-        result.aipdb = { error: `HTTP ${r.status}` };
+        result.aipdb = { error: `AbuseIPDB HTTP ${r.status}` };
       }
     } catch (e) {
       result.aipdb = { error: e.message };
     }
   }
 
-  // ── IPQualityScore ───────────────────────────────────────────────────
-  // IPQS has an /account endpoint that returns credits_used / credits_remaining
-  if (ipqs) {
+  // ── IPQualityScore ──────────────────────────────────────────────
+  if (ipqsKey) {
     try {
+      // IPQS account endpoint returns credit balance
       const r = await fetch(
-        `https://ipqualityscore.com/api/json/account/${encodeURIComponent(ipqs)}`,
-        { signal: AbortSignal.timeout(10000) }
+        `https://ipqualityscore.com/api/json/account/${encodeURIComponent(ipqsKey)}`,
+        { signal: AbortSignal.timeout(12000) }
       );
-      if (!r.ok) {
-        result.ipqs = { error: `HTTP ${r.status}` };
-      } else {
+      if (r.ok) {
         const d = await r.json();
-        if (!d.success) {
-          result.ipqs = { error: d.message || 'API error' };
-        } else {
+        if (d.success) {
           result.ipqs = {
-            plan:               d.account_type || 'free',
-            credits_used:       d.credits_used       ?? null,
-            credits_remaining:  d.credits_remaining  ?? null,
-            daily_limit:        d.total_credits       ?? null,
-            monthly_limit:      d.monthly_credits     ?? null,
-            // older API versions expose these directly
-            lookups_allowed:    d.allowed             ?? null,
-            lookups_used:       d.used                ?? null,
+            credits_used:      d.credits_used      ?? null,
+            credits_remaining: d.credits_remaining ?? null,
+            daily_limit:       d.total_credits     ?? null,
+            plan:              d.account_type       || 'free',
           };
+        } else {
+          result.ipqs = { error: d.message || 'IPQS account error' };
         }
+      } else if (r.status === 401) {
+        result.ipqs = { error: 'Invalid API key (401)' };
+      } else {
+        result.ipqs = { error: `IPQS HTTP ${r.status}` };
       }
     } catch (e) {
       result.ipqs = { error: e.message };
