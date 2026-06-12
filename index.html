@@ -1,0 +1,2083 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IP Sentinel — SOC Reputation Checker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:        #080D1A;
+    --surface:   #0F1828;
+    --card:      #141F33;
+    --border:    #1E2D47;
+    --cyan:      #00D4FF;
+    --cyan-dim:  rgba(0,212,255,0.12);
+    --green:     #00E87A;
+    --amber:     #FFB020;
+    --red:       #FF3B3B;
+    --purple:    #A78BFA;
+    --text:      #E2E8F0;
+    --muted:     #64748B;
+    --mono:      'JetBrains Mono', monospace;
+    --sans:      'Inter', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* === HEADER === */
+  header {
+    padding: 24px 32px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    background: var(--surface);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    backdrop-filter: blur(12px);
+  }
+  .logo-pulse {
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    background: radial-gradient(circle, var(--cyan) 0%, transparent 70%);
+    box-shadow: 0 0 20px var(--cyan);
+    animation: pulse 2.4s ease-in-out infinite;
+    flex-shrink: 0;
+  }
+  @keyframes pulse {
+    0%,100% { box-shadow: 0 0 12px var(--cyan); opacity: 0.9; }
+    50%      { box-shadow: 0 0 32px var(--cyan); opacity: 1; }
+  }
+  header h1 {
+    font-family: var(--mono);
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: var(--cyan);
+    letter-spacing: 0.08em;
+  }
+  header span {
+    font-size: 0.75rem;
+    color: var(--muted);
+    font-family: var(--mono);
+    margin-left: 2px;
+  }
+  .header-right {
+    margin-left: auto;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .badge {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    padding: 3px 8px;
+    border-radius: 4px;
+    border: 1px solid;
+    font-weight: 500;
+  }
+  .badge-vt   { color: #60A5FA; border-color: #60A5FA; background: rgba(96,165,250,0.08); }
+  .badge-ab   { color: var(--amber); border-color: var(--amber); background: rgba(255,176,32,0.08); }
+  .badge-iq   { color: var(--purple); border-color: var(--purple); background: rgba(167,139,250,0.08); }
+  .badge-ip   { color: var(--green); border-color: var(--green); background: rgba(0,232,122,0.08); }
+
+  /* === MAIN LAYOUT === */
+  main { max-width: 1100px; margin: 0 auto; padding: 32px 24px 64px; }
+
+  /* === API CONFIG PANEL === */
+  .config-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px 24px;
+    margin-bottom: 24px;
+    display: none; /* hidden by default */
+  }
+  .config-panel.open { display: block; }
+  .config-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    color: var(--muted);
+    cursor: pointer;
+    user-select: none;
+    margin-bottom: 24px;
+    transition: color 0.2s;
+  }
+  .config-toggle:hover { color: var(--cyan); }
+  .config-toggle .chevron { transition: transform 0.2s; display: inline-block; }
+  .config-toggle.open .chevron { transform: rotate(90deg); }
+
+  .config-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+  }
+  .api-key-field label {
+    display: block;
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    color: var(--muted);
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .api-key-field label span {
+    font-size: 0.68rem;
+    padding: 2px 6px;
+    border-radius: 3px;
+    margin-left: 6px;
+    font-weight: 500;
+  }
+  .free  { background: rgba(0,232,122,0.15); color: var(--green); }
+  .freemium { background: rgba(255,176,32,0.15); color: var(--amber); }
+  .api-key-field input {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 12px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .api-key-field input:focus { border-color: var(--cyan); }
+  .api-key-field .hint {
+    margin-top: 4px;
+    font-size: 0.68rem;
+    color: var(--muted);
+  }
+  .api-key-field .hint a { color: var(--cyan); text-decoration: none; }
+  .api-key-field .hint a:hover { text-decoration: underline; }
+
+  /* === QUOTA DISPLAY === */
+  .quota-section {
+    margin-top: 20px;
+    border-top: 1px solid var(--border);
+    padding-top: 16px;
+  }
+  .quota-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+  .quota-title {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .quota-refresh-btn {
+    margin-left: auto;
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    color: var(--cyan);
+    background: var(--cyan-dim);
+    border: 1px solid rgba(0,212,255,0.3);
+    border-radius: 4px;
+    padding: 3px 10px;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .quota-refresh-btn:hover { background: rgba(0,212,255,0.2); }
+  .quota-refresh-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .quota-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 10px;
+  }
+  .quota-card {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+    transition: border-color 0.2s;
+  }
+  .quota-card.quota-ok      { border-color: rgba(0,232,122,0.25); }
+  .quota-card.quota-warn    { border-color: rgba(255,176,32,0.35); }
+  .quota-card.quota-danger  { border-color: rgba(255,59,59,0.4); }
+  .quota-card.quota-nokey   { opacity: 0.45; }
+  .quota-card .qc-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 10px;
+  }
+  .quota-card .qc-name {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .quota-card .qc-plan {
+    margin-left: auto;
+    font-family: var(--mono);
+    font-size: 0.63rem;
+    padding: 2px 6px;
+    border-radius: 3px;
+    background: rgba(100,116,139,0.15);
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+  .quota-stat {
+    display: flex;
+    justify-content: space-between;
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    margin-bottom: 3px;
+  }
+  .quota-stat .qs-label { color: var(--muted); }
+  .quota-stat .qs-val   { color: var(--text); font-weight: 500; }
+  .quota-stat .qs-val.good   { color: var(--green); }
+  .quota-stat .qs-val.warn   { color: var(--amber); }
+  .quota-stat .qs-val.danger { color: var(--red); }
+  .quota-bar-wrap { margin-top: 8px; }
+  .quota-bar-track {
+    height: 5px;
+    background: var(--border);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .quota-bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.6s ease;
+  }
+  .quota-note {
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    color: var(--muted);
+    margin-top: 6px;
+    font-style: italic;
+  }
+  .quota-loading {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    color: var(--muted);
+    padding: 8px 0;
+    animation: pulse 1.4s infinite;
+  }
+  .input-section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 24px;
+  }
+  .input-section h2 {
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 12px;
+  }
+  textarea {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 0.88rem;
+    line-height: 1.6;
+    resize: vertical;
+    min-height: 120px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  textarea:focus { border-color: var(--cyan); }
+  textarea::placeholder { color: var(--muted); }
+
+  .input-controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 12px;
+    flex-wrap: wrap;
+  }
+  .btn-primary {
+    background: var(--cyan);
+    color: var(--bg);
+    border: none;
+    border-radius: 7px;
+    padding: 10px 22px;
+    font-family: var(--mono);
+    font-size: 0.85rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: opacity 0.2s, transform 0.1s;
+    letter-spacing: 0.04em;
+  }
+  .btn-primary:hover:not(:disabled) { opacity: 0.88; transform: translateY(-1px); }
+  .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-ghost {
+    background: transparent;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    padding: 10px 16px;
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    cursor: pointer;
+    transition: color 0.2s, border-color 0.2s;
+  }
+  .btn-ghost:hover { color: var(--text); border-color: var(--muted); }
+
+  .ip-count {
+    margin-left: auto;
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    color: var(--muted);
+  }
+
+  /* === PROGRESS BAR === */
+  .progress-wrap {
+    display: none;
+    margin-bottom: 20px;
+  }
+  .progress-wrap.active { display: block; }
+  .progress-label {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    color: var(--muted);
+    margin-bottom: 6px;
+    display: flex;
+    justify-content: space-between;
+  }
+  .progress-bar {
+    height: 3px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    background: var(--cyan);
+    border-radius: 2px;
+    transition: width 0.3s ease;
+    box-shadow: 0 0 8px var(--cyan);
+  }
+
+  /* === SUMMARY BAR === */
+  .summary-bar {
+    display: none;
+    gap: 16px;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+  }
+  .summary-bar.visible { display: flex; }
+  .summary-tile {
+    flex: 1;
+    min-width: 130px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 18px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .summary-tile .dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .summary-tile .num {
+    font-family: var(--mono);
+    font-size: 1.5rem;
+    font-weight: 700;
+    line-height: 1;
+  }
+  .summary-tile .lbl {
+    font-size: 0.7rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-top: 2px;
+  }
+  .dot-clean   { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .dot-suspicious { background: var(--amber); box-shadow: 0 0 6px var(--amber); }
+  .dot-malicious  { background: var(--red); box-shadow: 0 0 6px var(--red); }
+  .dot-unknown    { background: var(--muted); }
+  .num-clean   { color: var(--green); }
+  .num-suspicious { color: var(--amber); }
+  .num-malicious  { color: var(--red); }
+  .num-unknown    { color: var(--muted); }
+
+  /* === RESULTS GRID === */
+  #results { display: flex; flex-direction: column; gap: 16px; }
+
+  /* === RESULT CARD === */
+  .result-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    transition: border-color 0.3s;
+    animation: fadeSlideIn 0.35s ease both;
+  }
+  @keyframes fadeSlideIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .result-card.verdict-clean      { border-color: rgba(0,232,122,0.3); }
+  .result-card.verdict-suspicious { border-color: rgba(255,176,32,0.3); }
+  .result-card.verdict-malicious  { border-color: rgba(255,59,59,0.4); }
+
+  .card-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 18px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .verdict-indicator {
+    width: 8px;
+    height: 100%;
+    min-height: 40px;
+    border-radius: 4px;
+    flex-shrink: 0;
+    align-self: stretch;
+  }
+  .vi-clean      { background: var(--green); }
+  .vi-suspicious { background: var(--amber); }
+  .vi-malicious  { background: var(--red); }
+  .vi-unknown    { background: var(--muted); }
+  .vi-loading    { background: var(--cyan); animation: shimmer 1.2s infinite; }
+
+  @keyframes shimmer {
+    0%,100% { opacity: 0.4; }
+    50%     { opacity: 1; }
+  }
+
+  .card-ip {
+    font-family: var(--mono);
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--text);
+    flex: 1;
+  }
+  .card-meta {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .verdict-pill {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 4px 10px;
+    border-radius: 20px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .pill-clean      { background: rgba(0,232,122,0.15); color: var(--green); }
+  .pill-suspicious { background: rgba(255,176,32,0.15); color: var(--amber); }
+  .pill-malicious  { background: rgba(255,59,59,0.15); color: var(--red); }
+  .pill-unknown    { background: rgba(100,116,139,0.15); color: var(--muted); }
+  .pill-loading    { background: rgba(0,212,255,0.12); color: var(--cyan); }
+
+  .country-flag {
+    font-size: 1.1rem;
+  }
+  .geo-info {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    color: var(--muted);
+  }
+  .expand-btn {
+    color: var(--muted);
+    font-size: 1rem;
+    transition: transform 0.25s, color 0.2s;
+    flex-shrink: 0;
+  }
+  .card-header:hover .expand-btn { color: var(--text); }
+  .result-card.expanded .expand-btn { transform: rotate(180deg); }
+
+  /* === CARD DETAIL === */
+  .card-detail {
+    display: none;
+    padding: 0 18px 18px;
+    border-top: 1px solid var(--border);
+  }
+  .result-card.expanded .card-detail { display: block; }
+
+  .sources-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 12px;
+    margin-top: 16px;
+  }
+  .source-block {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+  }
+  .source-block .src-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+  }
+  .src-name {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .src-status {
+    font-size: 0.68rem;
+    font-family: var(--mono);
+    padding: 2px 6px;
+    border-radius: 3px;
+    margin-left: auto;
+  }
+  .src-link {
+    margin-left: 6px;
+    font-family: var(--mono);
+    font-size: 0.67rem;
+    color: var(--cyan);
+    text-decoration: none;
+    padding: 2px 7px;
+    border: 1px solid rgba(0,212,255,0.3);
+    border-radius: 3px;
+    transition: background 0.15s, border-color 0.15s;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .src-link:hover {
+    background: rgba(0,212,255,0.1);
+    border-color: var(--cyan);
+  }
+  .src-ok   { background: rgba(0,232,122,0.12); color: var(--green); }
+  .src-warn { background: rgba(255,176,32,0.12); color: var(--amber); }
+  .src-err  { background: rgba(255,59,59,0.12); color: var(--red); }
+  .src-skip { background: rgba(100,116,139,0.1); color: var(--muted); }
+
+  .src-rows { display: flex; flex-direction: column; gap: 5px; }
+  .src-row {
+    display: flex;
+    justify-content: space-between;
+    font-family: var(--mono);
+    font-size: 0.73rem;
+  }
+  .src-row .k { color: var(--muted); }
+  .src-row .v { color: var(--text); max-width: 55%; text-align: right; word-break: break-all; }
+  .v-red    { color: var(--red) !important; }
+  .v-amber  { color: var(--amber) !important; }
+  .v-green  { color: var(--green) !important; }
+  .v-cyan   { color: var(--cyan) !important; }
+
+  .score-bar-wrap { margin-top: 8px; }
+  .score-bar-track {
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-top: 3px;
+  }
+  .score-bar-fill { height: 100%; border-radius: 2px; transition: width 0.6s ease; }
+
+  /* === COPY BUTTON === */
+  .copy-btn {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    color: var(--muted);
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 3px 8px;
+    cursor: pointer;
+    transition: color 0.2s, border-color 0.2s;
+    margin-top: 12px;
+  }
+  .copy-btn:hover { color: var(--cyan); border-color: var(--cyan); }
+
+  /* === LOADING SKELETON === */
+  .skeleton {
+    background: linear-gradient(90deg, var(--surface) 25%, var(--border) 50%, var(--surface) 75%);
+    background-size: 200% 100%;
+    animation: skeletonMove 1.4s infinite;
+    border-radius: 4px;
+    height: 12px;
+  }
+  @keyframes skeletonMove {
+    0%   { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+
+  /* === EMPTY STATE === */
+  .empty-state {
+    text-align: center;
+    padding: 64px 24px;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    line-height: 2;
+  }
+  .empty-state .icon { font-size: 2.5rem; margin-bottom: 12px; opacity: 0.4; }
+
+  /* === TOOLTIP === */
+  [data-tooltip] { position: relative; }
+  [data-tooltip]:hover::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: #1E2D47;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    padding: 4px 8px;
+    border-radius: 4px;
+    white-space: nowrap;
+    pointer-events: none;
+    border: 1px solid var(--border);
+    z-index: 99;
+  }
+
+  /* === SCROLLBAR === */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+  /* === FILE UPLOAD ZONE === */
+  .file-upload-zone {
+    border: 1.5px dashed var(--border);
+    border-radius: 8px;
+    padding: 18px;
+    margin-bottom: 14px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    position: relative;
+  }
+  .file-upload-zone:hover,
+  .file-upload-zone.drag-over {
+    border-color: var(--cyan);
+    background: var(--cyan-dim);
+  }
+  .file-upload-zone.drag-over { border-style: solid; }
+  .file-upload-zone input[type=file] {
+    position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+  }
+  .upload-icon { font-size: 1.4rem; margin-bottom: 6px; opacity: 0.6; }
+  .upload-label {
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    color: var(--muted);
+    line-height: 1.7;
+  }
+  .upload-label strong { color: var(--cyan); }
+  .upload-label .formats {
+    display: inline-flex;
+    gap: 6px;
+    margin-top: 6px;
+  }
+  .fmt-tag {
+    font-size: 0.65rem;
+    padding: 2px 7px;
+    border-radius: 3px;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-family: var(--mono);
+  }
+
+  .file-feedback {
+    display: none;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 14px;
+    background: rgba(0,232,122,0.08);
+    border: 1px solid rgba(0,232,122,0.2);
+    border-radius: 6px;
+    margin-bottom: 12px;
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    color: var(--green);
+  }
+  .file-feedback.error {
+    background: rgba(255,59,59,0.08);
+    border-color: rgba(255,59,59,0.2);
+    color: var(--red);
+  }
+  .file-feedback.visible { display: flex; }
+  .file-feedback .fb-close {
+    margin-left: auto;
+    cursor: pointer;
+    opacity: 0.6;
+    font-size: 1rem;
+    line-height: 1;
+  }
+  .file-feedback .fb-close:hover { opacity: 1; }
+
+  .input-tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 12px;
+  }
+  .tab-btn {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    padding: 5px 14px;
+    border-radius: 5px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    transition: all 0.18s;
+  }
+  .tab-btn.active {
+    background: var(--cyan-dim);
+    border-color: var(--cyan);
+    color: var(--cyan);
+  }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  /* === CSV COLUMN PICKER === */
+  .col-picker {
+    display: none;
+    align-items: center;
+    gap: 10px;
+    margin-top: 8px;
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    color: var(--muted);
+  }
+  .col-picker.visible { display: flex; flex-wrap: wrap; }
+  .col-picker select {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    padding: 5px 10px;
+    outline: none;
+    cursor: pointer;
+  }
+  .col-picker select:focus { border-color: var(--cyan); }
+  .btn-apply {
+    background: var(--cyan-dim);
+    border: 1px solid var(--cyan);
+    color: var(--cyan);
+    border-radius: 5px;
+    padding: 5px 12px;
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: background 0.18s;
+  }
+  .btn-apply:hover { background: rgba(0,212,255,0.22); }
+
+  @media (max-width: 640px) {
+    header { padding: 16px; }
+    main { padding: 20px 16px 48px; }
+    .badge { display: none; }
+    .sources-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo-pulse"></div>
+  <div>
+    <h1>MAVERICK - IP CHECKER</h1>
+    <span>SOC Reputation Checker</span>
+  </div>
+  <div class="header-right">
+    <div class="badge badge-vt" data-tooltip="VirusTotal — 4 lookups/min free">VT</div>
+    <div class="badge badge-ab" data-tooltip="AbuseIPDB — 1000/day free">AIPDB</div>
+    <div class="badge badge-iq" data-tooltip="IPQualityScore — 200/day free">IPQS</div>
+    <div class="badge badge-ip" data-tooltip="ip-api — 45/min free, no key needed">ip-api</div>
+  </div>
+</header>
+
+<main>
+
+  <!-- API KEY CONFIG -->
+  <div class="config-toggle" id="configToggle" onclick="toggleConfig()">
+    <span class="chevron">▶</span>
+    <span>⚙ Configure API Keys</span>
+    <span style="margin-left:auto;font-size:0.68rem;color:var(--amber)">▸ keys stored in browser · proxied via your own /api/ on Vercel</span>
+  </div>
+
+  <div class="config-panel" id="configPanel">
+    <div class="config-grid">
+      <div class="api-key-field">
+        <label>VirusTotal <span class="freemium">Freemium</span></label>
+        <input type="password" id="key_vt" placeholder="Paste API key…" oninput="saveKeys()">
+        <div class="hint">4 lookups/min · <a href="https://www.virustotal.com/gui/join-us" target="_blank">Get free key →</a></div>
+      </div>
+      <div class="api-key-field">
+        <label>AbuseIPDB <span class="freemium">Freemium</span></label>
+        <input type="password" id="key_aipdb" placeholder="Paste API key…" oninput="saveKeys()">
+        <div class="hint">1,000 checks/day · <a href="https://www.abuseipdb.com/register" target="_blank">Get free key →</a></div>
+      </div>
+      <div class="api-key-field">
+        <label>IPQualityScore <span class="freemium">Freemium</span></label>
+        <input type="password" id="key_ipqs" placeholder="Paste API key…" oninput="saveKeys()">
+        <div class="hint">200 checks/day · <a href="https://www.ipqualityscore.com/create-account" target="_blank">Get free key →</a></div>
+      </div>
+      <div class="api-key-field">
+        <label>ip-api <span class="free">Free</span></label>
+        <input type="text" id="key_ipapi" placeholder="No key needed (leave blank)" readonly style="opacity:0.5;cursor:not-allowed">
+        <div class="hint">45 req/min · No signup needed · Geo + ASN data</div>
+      </div>
+    </div>
+
+    <!-- QUOTA SECTION -->
+    <div class="quota-section">
+      <div class="quota-header">
+        <span class="quota-title">📊 API Quota Status</span>
+        <button class="quota-refresh-btn" id="quotaRefreshBtn" onclick="fetchQuota()">⟳ Check Quota</button>
+      </div>
+      <div id="quotaGrid" class="quota-grid">
+        <div class="quota-card quota-nokey">
+          <div class="qc-head"><span class="qc-name" style="color:#60A5FA">VirusTotal</span></div>
+          <div class="quota-note">Add API key above then click Check Quota</div>
+        </div>
+        <div class="quota-card quota-nokey">
+          <div class="qc-head"><span class="qc-name" style="color:var(--amber)">AbuseIPDB</span></div>
+          <div class="quota-note">Add API key above then click Check Quota</div>
+        </div>
+        <div class="quota-card quota-nokey">
+          <div class="qc-head"><span class="qc-name" style="color:var(--purple)">IPQualityScore</span></div>
+          <div class="quota-note">Add API key above then click Check Quota</div>
+        </div>
+        <div class="quota-card quota-ok">
+          <div class="qc-head"><span class="qc-name" style="color:var(--green)">ip-api</span><span class="qc-plan">Free</span></div>
+          <div class="quota-stat"><span class="qs-label">Rate limit</span><span class="qs-val good">45 req/min</span></div>
+          <div class="quota-stat"><span class="qs-label">Key required</span><span class="qs-val good">No</span></div>
+          <div class="quota-note">Unlimited daily · geo + ASN only</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- IP INPUT -->
+  <div class="input-section">
+    <h2>▸ Enter IPs to Investigate</h2>
+
+    <!-- Tabs -->
+    <div class="input-tabs">
+      <button class="tab-btn active" onclick="switchTab('manual')">✏ Manual Input</button>
+      <button class="tab-btn" onclick="switchTab('file')">📂 Upload File</button>
+    </div>
+
+    <!-- Manual tab -->
+    <div class="tab-panel active" id="tab-manual">
+      <textarea id="ipInput" placeholder="One IP per line — IPv4 and IPv6 supported&#10;&#10;192.168.1.1&#10;8.8.8.8&#10;1.1.1.1&#10;2001:db8::1" oninput="updateCount()"></textarea>
+    </div>
+
+    <!-- File upload tab -->
+    <div class="tab-panel" id="tab-file">
+      <!-- Feedback bar -->
+      <div class="file-feedback" id="fileFeedback">
+        <span id="feedbackMsg"></span>
+        <span class="fb-close" onclick="dismissFeedback()">✕</span>
+      </div>
+
+      <!-- Drop zone -->
+      <div class="file-upload-zone" id="dropZone"
+           ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event)">
+        <input type="file" id="fileInput" accept=".csv,.txt,.tsv,text/plain,text/csv"
+               onchange="onFileSelect(event)">
+        <div class="upload-icon">⬆</div>
+        <div class="upload-label">
+          <strong>Click to browse</strong> or drag &amp; drop a file here<br>
+          <div class="formats">
+            <span class="fmt-tag">.csv</span>
+            <span class="fmt-tag">.txt</span>
+            <span class="fmt-tag">.tsv</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- CSV column picker (shown only for CSV with headers) -->
+      <div class="col-picker" id="colPicker">
+        <span>IP column:</span>
+        <select id="colSelect"></select>
+        <button class="btn-apply" onclick="applyColumnPick()">Apply</button>
+        <span id="colHint" style="color:var(--muted)"></span>
+      </div>
+    </div>
+
+    <div class="input-controls">
+      <button class="btn-primary" id="analyzeBtn" onclick="analyzeAll()">⚡ Analyze IPs</button>
+      <button class="btn-ghost" onclick="loadSample()">Load Sample</button>
+      <button class="btn-ghost" onclick="clearAll()">Clear</button>
+      <button class="btn-ghost" onclick="exportCSV()">Export CSV</button>
+      <div class="ip-count" id="ipCount">0 IPs</div>
+    </div>
+  </div>
+
+  <!-- PROGRESS -->
+  <div class="progress-wrap" id="progressWrap">
+    <div class="progress-label">
+      <span id="progressLabel">Checking IPs…</span>
+      <span id="progressPct">0%</span>
+    </div>
+    <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+  </div>
+
+  <!-- SUMMARY -->
+  <div class="summary-bar" id="summaryBar">
+    <div class="summary-tile">
+      <div class="dot dot-clean"></div>
+      <div><div class="num num-clean" id="s-clean">0</div><div class="lbl">Clean</div></div>
+    </div>
+    <div class="summary-tile">
+      <div class="dot dot-suspicious"></div>
+      <div><div class="num num-suspicious" id="s-suspicious">0</div><div class="lbl">Suspicious</div></div>
+    </div>
+    <div class="summary-tile">
+      <div class="dot dot-malicious"></div>
+      <div><div class="num num-malicious" id="s-malicious">0</div><div class="lbl">Malicious</div></div>
+    </div>
+    <div class="summary-tile">
+      <div class="dot dot-unknown"></div>
+      <div><div class="num num-unknown" id="s-unknown">0</div><div class="lbl">Unknown</div></div>
+    </div>
+  </div>
+
+  <!-- RESULTS -->
+  <div id="results">
+    <div class="empty-state">
+      <div class="icon">🛡</div>
+      Enter IPs above and hit <strong>Analyze</strong><br>
+      Results appear here in real time
+    </div>
+  </div>
+
+</main>
+
+<script>
+// ─────────────────────────────────────────────
+//  STATE
+// ─────────────────────────────────────────────
+let results = {};   // ip → result object
+let keys = {};
+
+// ─────────────────────────────────────────────
+//  KEY STORAGE (localStorage)
+// ─────────────────────────────────────────────
+function loadKeys() {
+  try {
+    const saved = JSON.parse(localStorage.getItem('ipsentinel_keys') || '{}');
+    document.getElementById('key_vt').value    = saved.vt    || '';
+    document.getElementById('key_aipdb').value = saved.aipdb || '';
+    document.getElementById('key_ipqs').value  = saved.ipqs  || '';
+    keys = saved;
+  } catch(e) {}
+}
+function saveKeys() {
+  keys = {
+    vt:    document.getElementById('key_vt').value.trim(),
+    aipdb: document.getElementById('key_aipdb').value.trim(),
+    ipqs:  document.getElementById('key_ipqs').value.trim(),
+  };
+  localStorage.setItem('ipsentinel_keys', JSON.stringify(keys));
+  // Debounce quota refresh so it doesn't fire on every keystroke
+  clearTimeout(window._quotaDebounce);
+  window._quotaDebounce = setTimeout(() => {
+    if (keys.vt || keys.aipdb || keys.ipqs) fetchQuota();
+  }, 1200);
+}
+
+// ─────────────────────────────────────────────
+//  UI HELPERS
+// ─────────────────────────────────────────────
+function toggleConfig() {
+  const panel  = document.getElementById('configPanel');
+  const toggle = document.getElementById('configToggle');
+  panel.classList.toggle('open');
+  toggle.classList.toggle('open');
+}
+function updateCount() {
+  const ips = parseIPs();
+  document.getElementById('ipCount').textContent = ips.length + ' IP' + (ips.length !== 1 ? 's' : '');
+}
+function loadSample() {
+  document.getElementById('ipInput').value =
+    '8.8.8.8\n1.1.1.1\n185.220.101.42\n45.83.65.1\n194.165.16.11\n91.92.109.75';
+  updateCount();
+}
+function clearAll() {
+  document.getElementById('ipInput').value = '';
+  document.getElementById('results').innerHTML = `
+    <div class="empty-state"><div class="icon">🛡</div>Enter IPs above and hit <strong>Analyze</strong><br>Results appear here in real time</div>`;
+  document.getElementById('summaryBar').classList.remove('visible');
+  document.getElementById('progressWrap').classList.remove('active');
+  results = {};
+  updateCount();
+}
+
+function parseIPs() {
+  return [...new Set(
+    document.getElementById('ipInput').value
+      .split(/[\n,;\s]+/)
+      .map(s => s.trim())
+      .filter(s => /^[\d:.a-fA-F]+$/.test(s) && s.length > 2)
+  )];
+}
+
+// ─────────────────────────────────────────────
+//  VERDICT LOGIC
+// ─────────────────────────────────────────────
+function computeVerdict(data) {
+  let malScore = 0, susScore = 0;
+  let sourcesWithData = 0;
+
+  if (data.vt && !data.vt.error) {
+    sourcesWithData++;
+    const m = data.vt.malicious || 0;
+    const s = data.vt.suspicious || 0;
+    if (m >= 5)      malScore += 4;
+    else if (m >= 3) malScore += 3;
+    else if (m >= 1) susScore += 2;
+    if (s >= 3)      susScore += 2;
+    else if (s >= 1) susScore += 1;
+    // Negative reputation is a strong signal
+    if ((data.vt.reputation || 0) < -10) malScore += 2;
+    else if ((data.vt.reputation || 0) < 0) susScore += 1;
+  }
+  if (data.aipdb && !data.aipdb.error) {
+    sourcesWithData++;
+    const cs = data.aipdb.abuseConfidenceScore || 0;
+    if (cs >= 80)      malScore += 3;
+    else if (cs >= 40) susScore += 2;
+    else if (cs >= 10) susScore += 1;
+    if (data.aipdb.isTor) susScore += 2;
+    if ((data.aipdb.totalReports || 0) > 50) susScore += 1;
+  }
+  if (data.ipqs && !data.ipqs.error) {
+    sourcesWithData++;
+    const fs = data.ipqs.fraud_score || 0;
+    if (data.ipqs.tor)       malScore += 2;
+    if (data.ipqs.bot_status) susScore += 2;
+    if (data.ipqs.proxy || data.ipqs.vpn) susScore += 1;
+    if (data.ipqs.recent_abuse) susScore += 2;
+    if (fs >= 85)      malScore += 3;
+    else if (fs >= 75) malScore += 2;
+    else if (fs >= 55) susScore += 2;
+    else if (fs >= 40) susScore += 1;
+  }
+  // ip-api proxy/hosting flag
+  if (data.ipapi && data.ipapi.status === 'success') {
+    if (data.ipapi.proxy) susScore += 1;
+  }
+
+  if (malScore >= 3) return 'malicious';
+  if (malScore >= 1 || susScore >= 3) return 'suspicious';
+  if (susScore >= 1) return 'suspicious';
+
+  // Only mark clean if at least one source actually returned data
+  return sourcesWithData > 0 ? 'clean' : 'unknown';
+}
+
+// ─────────────────────────────────────────────
+//  API CALLS  — all routed through /api/ serverless
+//  functions on Vercel to avoid CORS restrictions.
+//  Falls back to direct call for local dev.
+// ─────────────────────────────────────────────
+
+// Detect if running on Vercel (has /api/ routes) or local file
+const IS_VERCEL = window.location.protocol === 'https:' ||
+                  window.location.hostname !== '127.0.0.1' &&
+                  window.location.hostname !== 'localhost';
+
+async function apiCall(path, fallbackFn) {
+  if (IS_VERCEL) {
+    try {
+      const r = await fetch(path, { signal: AbortSignal.timeout(20000) });
+      const data = await r.json();
+      if (!r.ok) return { error: data.error || `HTTP ${r.status}` };
+      return data;
+    } catch(e) { return { error: 'Request failed: ' + e.message }; }
+  }
+  // Local dev — call APIs directly
+  return fallbackFn();
+}
+
+async function fetchIPAPI(ip) {
+  return apiCall(
+    `/api/ipapi?ip=${encodeURIComponent(ip)}`,
+    async () => {
+      try {
+        const r = await fetch(
+          `http://ip-api.com/json/${encodeURIComponent(ip)}?fields=status,country,countryCode,regionName,city,isp,org,as,proxy,hosting,query`,
+          { signal: AbortSignal.timeout(8000) }
+        );
+        return await r.json();
+      } catch(e) { return null; }
+    }
+  );
+}
+
+async function fetchVirusTotal(ip, apiKey) {
+  if (!apiKey) return null;
+  return apiCall(
+    `/api/vt?ip=${encodeURIComponent(ip)}&key=${encodeURIComponent(apiKey)}`,
+    async () => {
+      try {
+        const r = await fetch(
+          `https://www.virustotal.com/api/v3/ip_addresses/${encodeURIComponent(ip)}`,
+          { headers: { 'x-apikey': apiKey }, signal: AbortSignal.timeout(10000) }
+        );
+        if (r.status === 401) return { error: 'Invalid API key (401)' };
+        if (r.status === 429) return { error: 'Rate limit hit — wait 1 min' };
+        if (!r.ok) return { error: `HTTP ${r.status}` };
+        const data = await r.json();
+        const stats   = data?.data?.attributes?.last_analysis_stats || {};
+        const engines = data?.data?.attributes?.last_analysis_results || {};
+        const malEngines = Object.entries(engines)
+          .filter(([,v]) => v.category === 'malicious').map(([k]) => k);
+        return {
+          malicious: stats.malicious || 0, suspicious: stats.suspicious || 0,
+          harmless: stats.harmless || 0, undetected: stats.undetected || 0,
+          total: Object.keys(engines).length,
+          country: data?.data?.attributes?.country,
+          asOwner: data?.data?.attributes?.as_owner,
+          reputation: data?.data?.attributes?.reputation,
+          malEngines: malEngines.slice(0, 5),
+        };
+      } catch(e) { return { error: e.message }; }
+    }
+  );
+}
+
+async function fetchAbuseIPDB(ip, apiKey) {
+  if (!apiKey) return null;
+  return apiCall(
+    `/api/abuseipdb?ip=${encodeURIComponent(ip)}&key=${encodeURIComponent(apiKey)}`,
+    async () => {
+      try {
+        const r = await fetch(
+          `https://api.abuseipdb.com/api/v2/check?ipAddress=${encodeURIComponent(ip)}&maxAgeInDays=90`,
+          { headers: { 'Key': apiKey, 'Accept': 'application/json' }, signal: AbortSignal.timeout(8000) }
+        );
+        if (!r.ok) return { error: `HTTP ${r.status}` };
+        const data = await r.json();
+        const d = data?.data || {};
+        return {
+          abuseConfidenceScore: d.abuseConfidenceScore, totalReports: d.totalReports,
+          numDistinctUsers: d.numDistinctUsers,
+          lastReportedAt: d.lastReportedAt ? d.lastReportedAt.split('T')[0] : null,
+          isWhitelisted: d.isWhitelisted, isTor: d.isTor,
+          usageType: d.usageType, isp: d.isp, domain: d.domain, countryCode: d.countryCode,
+        };
+      } catch(e) { return { error: e.message }; }
+    }
+  );
+}
+
+async function fetchIPQS(ip, apiKey) {
+  if (!apiKey) return null;
+  return apiCall(
+    `/api/ipqs?ip=${encodeURIComponent(ip)}&key=${encodeURIComponent(apiKey)}`,
+    async () => {
+      try {
+        const r = await fetch(
+          `https://ipqualityscore.com/api/json/ip/${encodeURIComponent(apiKey)}/${encodeURIComponent(ip)}?strictness=1&allow_public_access_points=true`,
+          { signal: AbortSignal.timeout(10000) }
+        );
+        if (!r.ok) return { error: `HTTP ${r.status}` };
+        const d = await r.json();
+        if (!d.success) return { error: d.message };
+        return {
+          fraud_score: d.fraud_score, proxy: d.proxy, vpn: d.vpn, tor: d.tor,
+          bot_status: d.bot_status, recent_abuse: d.recent_abuse,
+          abuse_velocity: d.abuse_velocity, isp: d.ISP,
+          organization: d.organization, connection_type: d.connection_type,
+        };
+      } catch(e) { return { error: e.message }; }
+    }
+  );
+}
+
+// ─────────────────────────────────────────────
+//  MAIN ANALYSIS FLOW
+// ─────────────────────────────────────────────
+async function analyzeAll() {
+  const ips = parseIPs();
+  if (!ips.length) { alert('Please enter at least one IP address.'); return; }
+
+  saveKeys();
+  results = {};
+
+  // Setup UI
+  document.getElementById('analyzeBtn').disabled = true;
+  document.getElementById('progressWrap').classList.add('active');
+  document.getElementById('summaryBar').classList.add('visible');
+  document.getElementById('results').innerHTML = '';
+  resetSummary();
+
+  // Create placeholder cards
+  ips.forEach(ip => {
+    results[ip] = { ip, status: 'loading', vt: null, aipdb: null, ipqs: null, ipapi: null };
+    renderCard(ip);
+  });
+
+  // Analyze sequentially to respect rate limits
+  let done = 0;
+  for (const ip of ips) {
+    updateProgress(done, ips.length, `Checking ${ip}…`);
+
+    const [vtData, aipdbData, ipqsData, ipapiData] = await Promise.all([
+      fetchVirusTotal(ip, keys.vt),
+      fetchAbuseIPDB(ip, keys.aipdb),
+      fetchIPQS(ip, keys.ipqs),
+      fetchIPAPI(ip),
+    ]);
+
+    results[ip] = {
+      ip, status: 'done',
+      vt:    vtData,
+      aipdb: aipdbData,
+      ipqs:  ipqsData,
+      ipapi: ipapiData,
+    };
+    results[ip].verdict = computeVerdict(results[ip]);
+
+    renderCard(ip);
+    updateSummary();
+
+    done++;
+    // VirusTotal free tier: 4 req/min = 1 req per 15s
+    // AbuseIPDB: 1000/day = no per-minute concern
+    // Wait between IPs only if VT key is active to respect rate limit
+    if (done < ips.length) {
+      const delay = keys.vt ? 15500 : 800;
+      updateProgress(done, ips.length, keys.vt
+        ? `Waiting 15s (VirusTotal rate limit)… next: ${ips[done]}`
+        : `Checking ${ips[done]}…`);
+      await sleep(delay);
+    }
+  }
+
+  updateProgress(ips.length, ips.length, 'Analysis complete');
+  document.getElementById('analyzeBtn').disabled = false;
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ─────────────────────────────────────────────
+//  RENDER
+// ─────────────────────────────────────────────
+function renderCard(ip) {
+  const d = results[ip];
+  const v = d.verdict || 'unknown';
+  const isLoading = d.status === 'loading';
+
+  const geo = d.ipapi;
+  const flag = geo?.countryCode ? countryFlag(geo.countryCode) : '';
+  const geoStr = geo ? `${flag} ${geo.city ? geo.city + ', ' : ''}${geo.country || ''}` : '';
+
+  const pill = isLoading
+    ? `<span class="verdict-pill pill-loading">Checking…</span>`
+    : `<span class="verdict-pill pill-${v}">${v.toUpperCase()}</span>`;
+
+  const cardHTML = `
+    <div class="result-card ${isLoading ? '' : 'verdict-' + v}" id="card-${cssId(ip)}" onclick="toggleCard('${ip}')">
+      <div class="card-header">
+        <div class="verdict-indicator ${isLoading ? 'vi-loading' : 'vi-' + v}"></div>
+        <div class="card-ip">${ip}</div>
+        <div class="card-meta">
+          ${pill}
+          ${geoStr ? `<span class="geo-info">${geoStr}</span>` : ''}
+        </div>
+        <span class="expand-btn">▾</span>
+      </div>
+      <div class="card-detail">
+        ${isLoading ? buildSkeleton() : buildDetail(d)}
+        ${!isLoading ? `<button class="copy-btn" onclick="event.stopPropagation();copyResult('${ip}')">⎘ Copy JSON</button>` : ''}
+      </div>
+    </div>`;
+
+  const existing = document.getElementById(`card-${cssId(ip)}`);
+  if (existing) {
+    const wasExpanded = existing.classList.contains('expanded');
+    existing.outerHTML = cardHTML;
+    if (wasExpanded) {
+      const newCard = document.getElementById(`card-${cssId(ip)}`);
+      if (newCard) newCard.classList.add('expanded');
+    }
+  } else {
+    document.getElementById('results').insertAdjacentHTML('beforeend', cardHTML);
+  }
+}
+
+function cssId(ip) { return ip.replace(/[:.]/g, '_'); }
+function countryFlag(code) {
+  if (!code || code.length !== 2) return '';
+  return String.fromCodePoint(...[...code.toUpperCase()].map(c => 0x1F1E6 + c.charCodeAt(0) - 65));
+}
+
+function toggleCard(ip) {
+  const card = document.getElementById(`card-${cssId(ip)}`);
+  if (card) card.classList.toggle('expanded');
+}
+
+function buildSkeleton() {
+  return `<div style="display:flex;flex-direction:column;gap:8px;margin-top:14px">
+    <div class="skeleton" style="width:60%"></div>
+    <div class="skeleton" style="width:40%"></div>
+    <div class="skeleton" style="width:70%"></div>
+  </div>`;
+}
+
+function buildDetail(d) {
+  const blocks = [];
+
+  // ip-api block
+  if (d.ipapi && d.ipapi.status === 'success') {
+    blocks.push(buildIPAPIBlock(d.ipapi));
+  } else if (!d.ipapi) {
+    blocks.push(`<div class="source-block"><div class="src-header">
+      <span class="src-name" style="color:var(--green)">ip-api</span>
+      <span class="src-status src-err">Unreachable</span>
+    </div><div class="src-rows">${srcRow('Note','ip-api.com could not be reached','v-amber')}</div></div>`);
+  }
+
+  // VirusTotal block
+  blocks.push(buildVTBlock(d.vt, ip));
+
+  // AbuseIPDB block
+  blocks.push(buildAIPDBBlock(d.aipdb, ip));
+
+  // IPQS block
+  blocks.push(buildIPQSBlock(d.ipqs, ip));
+
+  // Verdict explanation row
+  const vtOk    = d.vt    && !d.vt.error;
+  const aipdbOk = d.aipdb && !d.aipdb.error;
+  const ipqsOk  = d.ipqs  && !d.ipqs.error;
+  const srcCount = [vtOk, aipdbOk, ipqsOk].filter(Boolean).length;
+  const errSrcs  = [
+    d.vt?.error    ? `VT: ${d.vt.error}`    : null,
+    d.aipdb?.error ? `AIPDB: ${d.aipdb.error}` : null,
+    d.ipqs?.error  ? `IPQS: ${d.ipqs.error}` : null,
+  ].filter(Boolean);
+
+  const verdictNote = `
+    <div style="margin-top:12px;padding:10px 12px;background:var(--bg);border:1px solid var(--border);border-radius:6px;font-family:var(--mono);font-size:0.72rem;color:var(--muted);line-height:1.8">
+      <span style="color:var(--text);font-weight:700">Verdict basis:</span>
+      ${srcCount} source${srcCount !== 1 ? 's' : ''} returned data
+      ${errSrcs.length ? `<br><span style="color:var(--red)">⚠ Errors: ${errSrcs.join(' · ')}</span>` : ''}
+      ${!d.vt && !keys.vt ? '<br>ℹ Add VirusTotal key for 70+ engine coverage' : ''}
+      ${!d.aipdb && !keys.aipdb ? '<br>ℹ Add AbuseIPDB key for community abuse reports' : ''}
+      ${!d.ipqs && !keys.ipqs ? '<br>ℹ Add IPQualityScore key for proxy/VPN/bot detection' : ''}
+    </div>`;
+
+  return `<div class="sources-grid">${blocks.join('')}</div>${verdictNote}`;
+}
+
+function srcRow(k, v, cls='') {
+  return `<div class="src-row"><span class="k">${k}</span><span class="v ${cls}">${v}</span></div>`;
+}
+
+function scoreBar(val, max=100) {
+  const pct = Math.min(100, (val / max) * 100);
+  const color = pct >= 75 ? 'var(--red)' : pct >= 40 ? 'var(--amber)' : 'var(--green)';
+  return `<div class="score-bar-wrap">
+    <div class="score-bar-track">
+      <div class="score-bar-fill" style="width:${pct}%;background:${color}"></div>
+    </div>
+  </div>`;
+}
+
+// Helper: external link pill that stops card-toggle propagation
+function srcLink(href, label) {
+  return `<a class="src-link" href="${href}" target="_blank" rel="noopener noreferrer"
+      onclick="event.stopPropagation()">
+    ${label} ↗
+  </a>`;
+}
+
+function buildIPAPIBlock(g) {
+  const ip  = g.query;
+  const url = `https://ip-api.com/#${ip}`;
+  let rows = '';
+  if (g.country)     rows += srcRow('Country', `${countryFlag(g.countryCode)} ${g.country}`);
+  if (g.regionName)  rows += srcRow('Region', g.regionName);
+  if (g.isp)         rows += srcRow('ISP', g.isp);
+  if (g.org)         rows += srcRow('Org', g.org);
+  if (g.as)          rows += srcRow('ASN', g.as.split(' ')[0]);
+  rows += srcRow('Proxy/Hosting', g.proxy || g.hosting ? 'YES' : 'No', g.proxy || g.hosting ? 'v-amber' : 'v-green');
+  return `<div class="source-block">
+    <div class="src-header">
+      <span class="src-name" style="color:var(--green)">ip-api</span>
+      <span class="src-status src-ok">GEO+ASN</span>
+      ${srcLink(url, 'View')}
+    </div>
+    <div class="src-rows">${rows}</div>
+  </div>`;
+}
+
+function buildVTBlock(vt, ip) {
+  // VirusTotal URL: base64url-encoded IP (no padding)
+  const vtUrl = ip
+    ? `https://www.virustotal.com/gui/ip-address/${encodeURIComponent(ip)}`
+    : 'https://www.virustotal.com';
+
+  if (!vt) return `<div class="source-block">
+    <div class="src-header">
+      <span class="src-name" style="color:#60A5FA">VirusTotal</span>
+      <span class="src-status src-skip">No Key</span>
+      ${srcLink(vtUrl, 'View')}
+    </div>
+    <div class="src-rows">${srcRow('Status', 'Add VT API key to enable', 'v-amber')}</div>
+  </div>`;
+
+  if (vt.error) return `<div class="source-block">
+    <div class="src-header">
+      <span class="src-name" style="color:#60A5FA">VirusTotal</span>
+      <span class="src-status src-err">Error</span>
+      ${srcLink(vtUrl, 'View')}
+    </div>
+    <div class="src-rows">${srcRow('Error', vt.error, 'v-red')}</div>
+  </div>`;
+
+  const statusCls = vt.malicious > 0 ? 'src-err' : vt.suspicious > 0 ? 'src-warn' : 'src-ok';
+  let rows = '';
+  rows += srcRow('Detections', `${vt.malicious} / ${vt.total}`,
+    vt.malicious >= 3 ? 'v-red' : vt.malicious >= 1 ? 'v-amber' : 'v-green');
+  rows += srcRow('Suspicious', vt.suspicious, vt.suspicious > 0 ? 'v-amber' : '');
+  rows += srcRow('Harmless',   vt.harmless);
+  if (vt.reputation !== undefined) rows += srcRow('Reputation', vt.reputation, vt.reputation < 0 ? 'v-red' : 'v-green');
+  if (vt.asOwner) rows += srcRow('AS Owner', vt.asOwner);
+  if (vt.malEngines?.length) rows += srcRow('Flagged by', vt.malEngines.join(', '), 'v-red');
+
+  return `<div class="source-block">
+    <div class="src-header">
+      <span class="src-name" style="color:#60A5FA">VirusTotal</span>
+      <span class="src-status ${statusCls}">${vt.malicious}/${vt.total} engines</span>
+      ${srcLink(vtUrl, 'View')}
+    </div>
+    <div class="src-rows">${rows}</div>
+    ${scoreBar(vt.malicious, Math.max(vt.total, 1) * 0.1)}
+  </div>`;
+}
+
+function buildAIPDBBlock(a, ip) {
+  const aipdbUrl = ip
+    ? `https://www.abuseipdb.com/check/${encodeURIComponent(ip)}`
+    : 'https://www.abuseipdb.com';
+
+  if (!a) return `<div class="source-block">
+    <div class="src-header">
+      <span class="src-name" style="color:var(--amber)">AbuseIPDB</span>
+      <span class="src-status src-skip">No Key</span>
+      ${srcLink(aipdbUrl, 'View')}
+    </div>
+    <div class="src-rows">${srcRow('Status', 'Add AIPDB API key to enable', 'v-amber')}</div>
+  </div>`;
+
+  if (a.error) return `<div class="source-block">
+    <div class="src-header">
+      <span class="src-name" style="color:var(--amber)">AbuseIPDB</span>
+      <span class="src-status src-err">Error</span>
+      ${srcLink(aipdbUrl, 'View')}
+    </div>
+    <div class="src-rows">${srcRow('Error', a.error, 'v-red')}</div>
+  </div>`;
+
+  const cs = a.abuseConfidenceScore || 0;
+  const statusCls = cs >= 80 ? 'src-err' : cs >= 25 ? 'src-warn' : 'src-ok';
+  let rows = '';
+  rows += srcRow('Abuse Score', cs + '%', cs >= 80 ? 'v-red' : cs >= 25 ? 'v-amber' : 'v-green');
+  rows += srcRow('Total Reports', a.totalReports || 0, a.totalReports > 0 ? 'v-amber' : '');
+  rows += srcRow('Distinct Users', a.numDistinctUsers || 0);
+  if (a.lastReportedAt) rows += srcRow('Last Report', a.lastReportedAt, 'v-amber');
+  if (a.usageType) rows += srcRow('Usage Type', a.usageType);
+  if (a.isp)       rows += srcRow('ISP', a.isp);
+  rows += srcRow('Tor Exit',    a.isTor ? 'YES' : 'No', a.isTor ? 'v-red' : '');
+  rows += srcRow('Whitelisted', a.isWhitelisted ? 'Yes' : 'No', a.isWhitelisted ? 'v-green' : '');
+
+  return `<div class="source-block">
+    <div class="src-header">
+      <span class="src-name" style="color:var(--amber)">AbuseIPDB</span>
+      <span class="src-status ${statusCls}">${cs}% confidence</span>
+      ${srcLink(aipdbUrl, 'View')}
+    </div>
+    <div class="src-rows">${rows}</div>
+    ${scoreBar(cs)}
+  </div>`;
+}
+
+function buildIPQSBlock(q, ip) {
+  const ipqsUrl = ip
+    ? `https://www.ipqualityscore.com/free-ip-lookup-proxy-vpn-test/lookup/${encodeURIComponent(ip)}`
+    : 'https://www.ipqualityscore.com';
+
+  if (!q) return `<div class="source-block">
+    <div class="src-header">
+      <span class="src-name" style="color:var(--purple)">IPQualityScore</span>
+      <span class="src-status src-skip">No Key</span>
+      ${srcLink(ipqsUrl, 'View')}
+    </div>
+    <div class="src-rows">${srcRow('Status', 'Add IPQS API key to enable', 'v-amber')}</div>
+  </div>`;
+
+  if (q.error) return `<div class="source-block">
+    <div class="src-header">
+      <span class="src-name" style="color:var(--purple)">IPQualityScore</span>
+      <span class="src-status src-err">Error</span>
+      ${srcLink(ipqsUrl, 'View')}
+    </div>
+    <div class="src-rows">${srcRow('Error', q.error, 'v-red')}</div>
+  </div>`;
+
+  const fs = q.fraud_score || 0;
+  const statusCls = fs >= 85 ? 'src-err' : fs >= 60 ? 'src-warn' : 'src-ok';
+  let rows = '';
+  rows += srcRow('Fraud Score', fs + '/100', fs >= 85 ? 'v-red' : fs >= 60 ? 'v-amber' : 'v-green');
+  rows += srcRow('Proxy',       q.proxy ? 'YES' : 'No', q.proxy ? 'v-amber' : '');
+  rows += srcRow('VPN',         q.vpn   ? 'YES' : 'No', q.vpn   ? 'v-amber' : '');
+  rows += srcRow('Tor',         q.tor   ? 'YES' : 'No', q.tor   ? 'v-red'   : '');
+  rows += srcRow('Bot Activity', q.bot_status ? 'YES' : 'No', q.bot_status ? 'v-red' : '');
+  rows += srcRow('Recent Abuse', q.recent_abuse ? 'YES' : 'No', q.recent_abuse ? 'v-red' : '');
+  if (q.connection_type) rows += srcRow('Conn. Type', q.connection_type);
+  if (q.isp)             rows += srcRow('ISP', q.isp);
+
+  return `<div class="source-block">
+    <div class="src-header">
+      <span class="src-name" style="color:var(--purple)">IPQualityScore</span>
+      <span class="src-status ${statusCls}">Score: ${fs}</span>
+      ${srcLink(ipqsUrl, 'View')}
+    </div>
+    <div class="src-rows">${rows}</div>
+    ${scoreBar(fs)}
+  </div>`;
+}
+
+// ─────────────────────────────────────────────
+//  PROGRESS & SUMMARY
+// ─────────────────────────────────────────────
+function updateProgress(done, total, label) {
+  const pct = total ? Math.round((done / total) * 100) : 0;
+  document.getElementById('progressLabel').textContent = label;
+  document.getElementById('progressPct').textContent   = pct + '%';
+  document.getElementById('progressFill').style.width  = pct + '%';
+}
+function resetSummary() {
+  ['clean','suspicious','malicious','unknown'].forEach(v => {
+    document.getElementById('s-' + v).textContent = '0';
+  });
+}
+function updateSummary() {
+  const counts = { clean: 0, suspicious: 0, malicious: 0, unknown: 0 };
+  Object.values(results).forEach(r => {
+    if (r.verdict) counts[r.verdict] = (counts[r.verdict] || 0) + 1;
+  });
+  ['clean','suspicious','malicious','unknown'].forEach(v => {
+    document.getElementById('s-' + v).textContent = counts[v];
+  });
+}
+
+// ─────────────────────────────────────────────
+//  EXPORT
+// ─────────────────────────────────────────────
+function exportCSV() {
+  const done = Object.values(results).filter(r => r.status === 'done');
+  if (!done.length) { alert('No results to export yet.'); return; }
+  const rows = [['IP','Verdict','Country','ISP','VT_Detections','VT_Total','Abuse_Score','Abuse_Reports','IPQS_Fraud','Proxy','VPN','Tor']];
+  done.forEach(r => {
+    rows.push([
+      r.ip, r.verdict || '',
+      r.ipapi?.country || '', r.ipapi?.isp || '',
+      r.vt?.malicious  ?? '', r.vt?.total       ?? '',
+      r.aipdb?.abuseConfidenceScore ?? '', r.aipdb?.totalReports ?? '',
+      r.ipqs?.fraud_score ?? '',
+      r.ipqs?.proxy ? '1' : r.ipqs ? '0' : '',
+      r.ipqs?.vpn   ? '1' : r.ipqs ? '0' : '',
+      r.ipqs?.tor   ? '1' : r.ipqs ? '0' : '',
+    ].map(v => `"${String(v).replace(/"/g,'""')}"`));
+  });
+  const csv = rows.map(r => r.join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `ip_sentinel_${new Date().toISOString().split('T')[0]}.csv`;
+  a.click();
+}
+
+function copyResult(ip) {
+  const r = results[ip];
+  if (!r) return;
+  navigator.clipboard.writeText(JSON.stringify(r, null, 2))
+    .then(() => { /* silent success */ })
+    .catch(() => alert('Copy failed. Check clipboard permissions.'));
+}
+
+// ─────────────────────────────────────────────
+//  TAB SWITCHING
+// ─────────────────────────────────────────────
+function switchTab(name) {
+  document.querySelectorAll('.tab-btn').forEach((b, i) => {
+    b.classList.toggle('active', ['manual','file'][i] === name);
+  });
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+}
+
+// ─────────────────────────────────────────────
+//  FILE UPLOAD — DRAG & DROP
+// ─────────────────────────────────────────────
+function onDragOver(e) {
+  e.preventDefault();
+  document.getElementById('dropZone').classList.add('drag-over');
+}
+function onDragLeave(e) {
+  document.getElementById('dropZone').classList.remove('drag-over');
+}
+function onDrop(e) {
+  e.preventDefault();
+  document.getElementById('dropZone').classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) processFile(file);
+}
+function onFileSelect(e) {
+  const file = e.target.files[0];
+  if (file) processFile(file);
+  // Reset so same file can be re-selected
+  e.target.value = '';
+}
+
+// ─────────────────────────────────────────────
+//  FILE PROCESSING
+// ─────────────────────────────────────────────
+let _csvRows = [];   // raw parsed rows for column picking
+let _csvHeaders = [];
+
+function processFile(file) {
+  const ext = file.name.split('.').pop().toLowerCase();
+  const reader = new FileReader();
+  reader.onload = e => {
+    const text = e.target.result;
+    if (ext === 'csv' || ext === 'tsv') {
+      handleCSV(text, ext === 'tsv' ? '\t' : detectDelimiter(text));
+    } else {
+      handlePlainText(text);
+    }
+  };
+  reader.onerror = () => showFeedback('Failed to read file.', true);
+  reader.readAsText(file);
+}
+
+function detectDelimiter(text) {
+  // Count commas vs semicolons vs tabs in first 3 lines
+  const sample = text.split('\n').slice(0, 3).join('\n');
+  const counts = { ',': 0, ';': 0, '\t': 0 };
+  for (const ch of sample) if (ch in counts) counts[ch]++;
+  return Object.entries(counts).sort((a,b) => b[1]-a[1])[0][0];
+}
+
+function handlePlainText(text) {
+  // Extract all IPs — lines, comma-separated, space-separated
+  const ips = extractIPsFromText(text);
+  if (!ips.length) { showFeedback('No valid IPs found in the file.', true); return; }
+  addIPsToTextarea(ips);
+  showFeedback(`✓ Loaded ${ips.length} IP${ips.length > 1 ? 's' : ''} from text file`, false);
+  hideCsvPicker();
+}
+
+function handleCSV(text, delimiter) {
+  const lines = text.split(/\r?\n/).filter(l => l.trim());
+  if (!lines.length) { showFeedback('File appears to be empty.', true); return; }
+
+  const delim = delimiter || ',';
+  const parseRow = row => {
+    // Handle quoted fields
+    const result = [];
+    let cur = '', inQ = false;
+    for (let i = 0; i < row.length; i++) {
+      const c = row[i];
+      if (c === '"') { inQ = !inQ; }
+      else if (c === delim && !inQ) { result.push(cur.trim()); cur = ''; }
+      else { cur += c; }
+    }
+    result.push(cur.trim());
+    return result;
+  };
+
+  const firstRow = parseRow(lines[0]);
+  const hasHeaders = firstRow.some(c => isNaN(c) && !/^[\d:.a-fA-F]+$/.test(c.trim()));
+
+  _csvHeaders = hasHeaders ? firstRow : firstRow.map((_, i) => `Column ${i + 1}`);
+  _csvRows = lines.slice(hasHeaders ? 1 : 0).map(parseRow);
+
+  // Auto-detect IP column
+  const ipColIdx = detectIPColumn(_csvHeaders, _csvRows);
+
+  if (_csvHeaders.length > 1) {
+    // Show column picker
+    showCsvPicker(ipColIdx);
+    showFeedback(`✓ CSV loaded — ${_csvRows.length} rows, ${_csvHeaders.length} columns. Select the IP column below.`, false);
+  } else {
+    // Single column — just extract
+    applyCSVColumn(0);
+  }
+}
+
+function detectIPColumn(headers, rows) {
+  // Score each column: how many cells look like IPs?
+  const ipRe = /^(\d{1,3}\.){3}\d{1,3}$|^[\da-fA-F:]{3,}$/;
+  let bestCol = 0, bestScore = -1;
+
+  for (let c = 0; c < headers.length; c++) {
+    // Header name hint
+    const hdr = headers[c].toLowerCase();
+    const nameScore = /\bip\b|address|addr|host|source|src|dest|dst/.test(hdr) ? 50 : 0;
+    // Data score
+    const sample = rows.slice(0, 20).map(r => (r[c] || '').trim());
+    const dataScore = sample.filter(v => ipRe.test(v)).length;
+    const total = nameScore + dataScore;
+    if (total > bestScore) { bestScore = total; bestCol = c; }
+  }
+  return bestCol;
+}
+
+function showCsvPicker(selectedIdx) {
+  const picker = document.getElementById('colPicker');
+  const sel = document.getElementById('colSelect');
+  sel.innerHTML = _csvHeaders.map((h, i) =>
+    `<option value="${i}" ${i === selectedIdx ? 'selected' : ''}>${h}</option>`
+  ).join('');
+  picker.classList.add('visible');
+  // Preview count
+  updateColHint(selectedIdx);
+  sel.onchange = () => updateColHint(parseInt(sel.value));
+}
+
+function updateColHint(colIdx) {
+  const ipRe = /^(\d{1,3}\.){3}\d{1,3}$|^[\da-fA-F:]{2,}$/;
+  const ips = _csvRows.map(r => (r[colIdx] || '').trim()).filter(v => ipRe.test(v));
+  document.getElementById('colHint').textContent = `→ ${ips.length} IPs detected`;
+}
+
+function applyColumnPick() {
+  const idx = parseInt(document.getElementById('colSelect').value);
+  applyCSVColumn(idx);
+}
+
+function applyCSVColumn(colIdx) {
+  const ipRe = /^(\d{1,3}\.){3}\d{1,3}$|^[\da-fA-F:]{2,}$/;
+  const ips = _csvRows
+    .map(r => (r[colIdx] || '').trim())
+    .filter(v => ipRe.test(v));
+
+  if (!ips.length) { showFeedback(`No valid IPs found in column "${_csvHeaders[colIdx]}".`, true); return; }
+  addIPsToTextarea(ips);
+  showFeedback(`✓ Loaded ${ips.length} IP${ips.length > 1 ? 's' : ''} from column "${_csvHeaders[colIdx]}"`, false);
+}
+
+function extractIPsFromText(text) {
+  const ipRe = /\b(\d{1,3}\.){3}\d{1,3}\b|[\da-fA-F]{1,4}(::?[\da-fA-F]{0,4}){2,7}/g;
+  return [...new Set((text.match(ipRe) || []).map(ip => ip.trim()).filter(Boolean))];
+}
+
+function addIPsToTextarea(ips) {
+  const ta = document.getElementById('ipInput');
+  const existing = ta.value.trim();
+  const existingSet = new Set(existing ? existing.split(/\s+/) : []);
+  const newOnes = ips.filter(ip => !existingSet.has(ip));
+  ta.value = [...(existing ? [existing] : []), ...newOnes].join('\n');
+  // Switch to manual tab to show the loaded IPs
+  switchTab('manual');
+  updateCount();
+}
+
+function hideCsvPicker() {
+  document.getElementById('colPicker').classList.remove('visible');
+  _csvRows = []; _csvHeaders = [];
+}
+
+function showFeedback(msg, isError) {
+  const el = document.getElementById('fileFeedback');
+  const msgEl = document.getElementById('feedbackMsg');
+  el.className = 'file-feedback visible' + (isError ? ' error' : '');
+  msgEl.textContent = msg;
+}
+function dismissFeedback() {
+  document.getElementById('fileFeedback').classList.remove('visible');
+}
+
+// ─────────────────────────────────────────────
+//  QUOTA FETCHING
+// ─────────────────────────────────────────────
+async function fetchQuota() {
+  const vtKey    = keys.vt    || '';
+  const aipdbKey = keys.aipdb || '';
+  const ipqsKey  = keys.ipqs  || '';
+
+  // Need at least one key
+  const hasAny = vtKey || aipdbKey || ipqsKey;
+  const grid = document.getElementById('quotaGrid');
+  const btn  = document.getElementById('quotaRefreshBtn');
+
+  if (!hasAny) {
+    renderQuotaNoKeys();
+    return;
+  }
+
+  // Loading state
+  btn.disabled = true;
+  btn.textContent = '⟳ Checking…';
+  grid.innerHTML = `<div class="quota-loading">Fetching quota data…</div>`;
+
+  const params = new URLSearchParams();
+  if (vtKey)    params.set('vt',    vtKey);
+  if (aipdbKey) params.set('aipdb', aipdbKey);
+  if (ipqsKey)  params.set('ipqs',  ipqsKey);
+
+  try {
+    const endpoint = IS_VERCEL
+      ? `/api/quota?${params}`
+      : `https://corsproxy.io/?url=${encodeURIComponent(`https://ipqualityscore.com/api/json/account/${ipqsKey}`)}`; // simplified local fallback
+
+    let data = {};
+    if (IS_VERCEL) {
+      const r = await fetch(`/api/quota?${params}`, { signal: AbortSignal.timeout(20000) });
+      data = await r.json();
+    } else {
+      // Local dev: fetch each directly where CORS allows
+      if (vtKey) {
+        try {
+          const r = await fetch('https://www.virustotal.com/api/v3/users/me',
+            { headers: { 'x-apikey': vtKey }, signal: AbortSignal.timeout(10000) });
+          if (r.ok) {
+            const d = await r.json();
+            const q = d?.data?.attributes?.quotas || {};
+            const daily = q.api_requests_daily || {};
+            data.vt = { daily_used: daily.used ?? null, daily_limit: daily.allowed ?? null,
+                        plan: d?.data?.attributes?.status || 'free' };
+          } else { data.vt = { error: `HTTP ${r.status}` }; }
+        } catch(e) { data.vt = { error: e.message }; }
+      }
+      if (ipqsKey) {
+        try {
+          const r = await fetch(
+            `https://ipqualityscore.com/api/json/account/${encodeURIComponent(ipqsKey)}`,
+            { signal: AbortSignal.timeout(10000) });
+          if (r.ok) {
+            const d = await r.json();
+            data.ipqs = d.success
+              ? { credits_used: d.credits_used, credits_remaining: d.credits_remaining,
+                  daily_limit: d.total_credits, plan: d.account_type || 'free' }
+              : { error: d.message };
+          } else { data.ipqs = { error: `HTTP ${r.status}` }; }
+        } catch(e) { data.ipqs = { error: e.message }; }
+      }
+      if (aipdbKey) {
+        data.aipdb = { error: 'CORS blocked locally — deploy to Vercel to see AbuseIPDB quota' };
+      }
+    }
+
+    renderQuotaCards(data, vtKey, aipdbKey, ipqsKey);
+  } catch(e) {
+    grid.innerHTML = `<div class="quota-loading" style="color:var(--red)">Failed to fetch quota: ${e.message}</div>`;
+  }
+
+  btn.disabled = false;
+  btn.textContent = '⟳ Check Quota';
+}
+
+function renderQuotaNoKeys() {
+  document.getElementById('quotaGrid').innerHTML = `
+    <div class="quota-card quota-nokey">
+      <div class="qc-head"><span class="qc-name" style="color:#60A5FA">VirusTotal</span></div>
+      <div class="quota-note">Add API key above then click Check Quota</div>
+    </div>
+    <div class="quota-card quota-nokey">
+      <div class="qc-head"><span class="qc-name" style="color:var(--amber)">AbuseIPDB</span></div>
+      <div class="quota-note">Add API key above then click Check Quota</div>
+    </div>
+    <div class="quota-card quota-nokey">
+      <div class="qc-head"><span class="qc-name" style="color:var(--purple)">IPQualityScore</span></div>
+      <div class="quota-note">Add API key above then click Check Quota</div>
+    </div>
+    <div class="quota-card quota-ok">
+      <div class="qc-head"><span class="qc-name" style="color:var(--green)">ip-api</span><span class="qc-plan">Free</span></div>
+      <div class="quota-stat"><span class="qs-label">Rate limit</span><span class="qs-val good">45 req/min</span></div>
+      <div class="quota-stat"><span class="qs-label">Key required</span><span class="qs-val good">No</span></div>
+      <div class="quota-note">Unlimited daily · geo + ASN only</div>
+    </div>`;
+}
+
+function quotaBar(used, limit) {
+  if (used == null || limit == null || limit === 0) return '';
+  const pct   = Math.min(100, Math.round((used / limit) * 100));
+  const color = pct >= 90 ? 'var(--red)' : pct >= 70 ? 'var(--amber)' : 'var(--green)';
+  return `<div class="quota-bar-wrap">
+    <div class="quota-bar-track">
+      <div class="quota-bar-fill" style="width:${pct}%;background:${color}"></div>
+    </div>
+  </div>`;
+}
+
+function quotaCls(used, limit) {
+  if (!limit) return 'quota-ok';
+  const pct = (used / limit) * 100;
+  if (pct >= 90) return 'quota-danger';
+  if (pct >= 70) return 'quota-warn';
+  return 'quota-ok';
+}
+
+function qStat(label, val, cls = '') {
+  return `<div class="quota-stat">
+    <span class="qs-label">${label}</span>
+    <span class="qs-val ${cls}">${val}</span>
+  </div>`;
+}
+
+function renderQuotaCards(data, vtKey, aipdbKey, ipqsKey) {
+  let html = '';
+
+  // ── VirusTotal ──
+  if (!vtKey) {
+    html += `<div class="quota-card quota-nokey">
+      <div class="qc-head"><span class="qc-name" style="color:#60A5FA">VirusTotal</span></div>
+      <div class="quota-note">No key configured</div></div>`;
+  } else if (data.vt?.error) {
+    html += `<div class="quota-card quota-danger">
+      <div class="qc-head"><span class="qc-name" style="color:#60A5FA">VirusTotal</span></div>
+      ${qStat('Status', data.vt.error, 'danger')}
+    </div>`;
+  } else if (data.vt) {
+    const v = data.vt;
+    const used  = v.daily_used;
+    const limit = v.daily_limit;
+    const rem   = (limit != null && used != null) ? limit - used : null;
+    const pctUsed = (used != null && limit) ? Math.round((used/limit)*100) : null;
+    const valCls  = pctUsed >= 90 ? 'danger' : pctUsed >= 70 ? 'warn' : 'good';
+    html += `<div class="quota-card ${quotaCls(used, limit)}">
+      <div class="qc-head">
+        <span class="qc-name" style="color:#60A5FA">VirusTotal</span>
+        ${v.plan ? `<span class="qc-plan">${v.plan}</span>` : ''}
+      </div>
+      ${used != null ? qStat('Daily used', `${used.toLocaleString()} / ${limit ? limit.toLocaleString() : '?'}`, valCls) : ''}
+      ${rem != null ? qStat('Remaining today', rem.toLocaleString(), valCls === 'danger' ? 'danger' : 'good') : ''}
+      ${v.hourly_used != null ? qStat('Hourly used', `${v.hourly_used} / ${v.hourly_limit ?? '?'}`) : ''}
+      ${quotaBar(used, limit)}
+      <div class="quota-note">Resets daily at midnight UTC</div>
+    </div>`;
+  }
+
+  // ── AbuseIPDB ──
+  if (!aipdbKey) {
+    html += `<div class="quota-card quota-nokey">
+      <div class="qc-head"><span class="qc-name" style="color:var(--amber)">AbuseIPDB</span></div>
+      <div class="quota-note">No key configured</div></div>`;
+  } else if (data.aipdb?.error) {
+    html += `<div class="quota-card quota-danger">
+      <div class="qc-head"><span class="qc-name" style="color:var(--amber)">AbuseIPDB</span></div>
+      ${qStat('Status', data.aipdb.error, 'danger')}
+    </div>`;
+  } else if (data.aipdb) {
+    const a   = data.aipdb;
+    const rem = a.daily_remaining;
+    const lim = a.daily_limit;
+    const used = a.daily_used;
+    const pct  = (rem != null && lim) ? Math.round(((lim - rem) / lim) * 100) : null;
+    const valCls = pct >= 90 ? 'danger' : pct >= 70 ? 'warn' : 'good';
+    html += `<div class="quota-card ${quotaCls(used, lim)}">
+      <div class="qc-head"><span class="qc-name" style="color:var(--amber)">AbuseIPDB</span><span class="qc-plan">Free</span></div>
+      ${lim != null ? qStat('Daily limit', lim.toLocaleString()) : ''}
+      ${used != null ? qStat('Used today', used.toLocaleString(), valCls) : ''}
+      ${rem != null ? qStat('Remaining', rem.toLocaleString(), rem < 50 ? 'danger' : rem < 200 ? 'warn' : 'good') : ''}
+      ${a.resets_at ? qStat('Resets on', a.resets_at) : ''}
+      ${quotaBar(used, lim)}
+      <div class="quota-note">1,000 checks/day on free plan</div>
+    </div>`;
+  }
+
+  // ── IPQualityScore ──
+  if (!ipqsKey) {
+    html += `<div class="quota-card quota-nokey">
+      <div class="qc-head"><span class="qc-name" style="color:var(--purple)">IPQualityScore</span></div>
+      <div class="quota-note">No key configured</div></div>`;
+  } else if (data.ipqs?.error) {
+    html += `<div class="quota-card quota-danger">
+      <div class="qc-head"><span class="qc-name" style="color:var(--purple)">IPQualityScore</span></div>
+      ${qStat('Status', data.ipqs.error, 'danger')}
+    </div>`;
+  } else if (data.ipqs) {
+    const q   = data.ipqs;
+    const rem = q.credits_remaining ?? q.lookups_allowed;
+    const used = q.credits_used    ?? q.lookups_used;
+    const lim  = q.daily_limit     ?? q.monthly_limit;
+    const pct  = (used != null && lim) ? Math.round((used / lim) * 100) : null;
+    const valCls = pct >= 90 ? 'danger' : pct >= 70 ? 'warn' : 'good';
+    html += `<div class="quota-card ${quotaCls(used, lim)}">
+      <div class="qc-head">
+        <span class="qc-name" style="color:var(--purple)">IPQualityScore</span>
+        ${q.plan ? `<span class="qc-plan">${q.plan}</span>` : ''}
+      </div>
+      ${used != null ? qStat('Credits used', used.toLocaleString(), valCls) : ''}
+      ${rem  != null ? qStat('Remaining', rem.toLocaleString(), rem < 20 ? 'danger' : rem < 50 ? 'warn' : 'good') : ''}
+      ${lim  != null ? qStat('Total credits', lim.toLocaleString()) : ''}
+      ${quotaBar(used, lim)}
+      <div class="quota-note">200 lookups/day on free plan</div>
+    </div>`;
+  }
+
+  // ── ip-api (always shown, always free) ──
+  html += `<div class="quota-card quota-ok">
+    <div class="qc-head"><span class="qc-name" style="color:var(--green)">ip-api</span><span class="qc-plan">Free</span></div>
+    ${qStat('Rate limit', '45 req / min', 'good')}
+    ${qStat('Key required', 'No', 'good')}
+    ${qStat('Daily limit', 'Unlimited', 'good')}
+    <div class="quota-note">No account needed · geo + ASN data</div>
+  </div>`;
+
+  document.getElementById('quotaGrid').innerHTML = html;
+}
+
+// ─────────────────────────────────────────────
+//  INIT
+// ─────────────────────────────────────────────
+loadKeys();
+updateCount();
+// Auto-fetch quota if config panel is opened with keys already saved
+document.getElementById('configToggle').addEventListener('click', () => {
+  // Small delay so panel is visible first
+  setTimeout(() => {
+    const hasKeys = keys.vt || keys.aipdb || keys.ipqs;
+    const alreadyLoaded = document.getElementById('quotaGrid')
+      .querySelector('.quota-loading, .quota-stat');
+    if (hasKeys && !alreadyLoaded) fetchQuota();
+  }, 150);
+});
+</script>
+</body>
+</html>
