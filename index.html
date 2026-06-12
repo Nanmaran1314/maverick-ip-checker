@@ -816,7 +816,7 @@
   <div class="header-right">
     <div class="badge badge-vt" data-tooltip="VirusTotal — 4 lookups/min free">VT</div>
     <div class="badge badge-ab" data-tooltip="AbuseIPDB — 1000/day free">AIPDB</div>
-    <!-- <div class="badge badge-iq" data-tooltip="IPQualityScore — 200/day free">IPQS</div> -->
+    <div class="badge badge-iq" data-tooltip="IPQualityScore — 200/day free">IPQS</div>
     <div class="badge badge-ip" data-tooltip="ip-api — 45/min free, no key needed">ip-api</div>
   </div>
 </header>
@@ -842,11 +842,11 @@
         <input type="password" id="key_aipdb" placeholder="Paste API key…" oninput="saveKeys()">
         <div class="hint">1,000 checks/day · <a href="https://www.abuseipdb.com/register" target="_blank">Get free key →</a></div>
       </div>
-      <!-- <div class="api-key-field">
+      <div class="api-key-field">
         <label>IPQualityScore <span class="freemium">Freemium</span></label>
         <input type="password" id="key_ipqs" placeholder="Paste API key…" oninput="saveKeys()">
         <div class="hint">200 checks/day · <a href="https://www.ipqualityscore.com/create-account" target="_blank">Get free key →</a></div>
-      </div> -->
+      </div>
       <div class="api-key-field">
         <label>ip-api <span class="free">Free</span></label>
         <input type="text" id="key_ipapi" placeholder="No key needed (leave blank)" readonly style="opacity:0.5;cursor:not-allowed">
@@ -869,10 +869,10 @@
           <div class="qc-head"><span class="qc-name" style="color:var(--amber)">AbuseIPDB</span></div>
           <div class="quota-note">Add API key above then click Check Quota</div>
         </div>
-        <!-- <div class="quota-card quota-nokey">
+        <div class="quota-card quota-nokey">
           <div class="qc-head"><span class="qc-name" style="color:var(--purple)">IPQualityScore</span></div>
           <div class="quota-note">Add API key above then click Check Quota</div>
-        </div> -->
+        </div>
         <div class="quota-card quota-ok">
           <div class="qc-head"><span class="qc-name" style="color:var(--green)">ip-api</span><span class="qc-plan">Free</span></div>
           <div class="quota-stat"><span class="qs-label">Rate limit</span><span class="qs-val good">45 req/min</span></div>
@@ -1200,30 +1200,29 @@ async function fetchAbuseIPDB(ip, apiKey) {
   );
 }
 
-// async function fetchIPQS(ip, apiKey) {
-//   if (!apiKey) return null;
-//   return apiCall(
-//     `/api/ipqs?ip=${encodeURIComponent(ip)}&key=${encodeURIComponent(apiKey)}`,
-//     async () => {
-//       // Local fallback: IPQS puts key in URL path so no CORS issue
-//       try {
-//         const r = await fetch(
-//           `https://ipqualityscore.com/api/json/ip/${encodeURIComponent(apiKey)}/${encodeURIComponent(ip)}?strictness=1&allow_public_access_points=true`,
-//           { signal: AbortSignal.timeout(10000) }
-//         );
-//         if (!r.ok) return { error: `HTTP ${r.status}` };
-//         const d = await r.json();
-//         if (!d.success) return { error: d.message || 'IPQS error — check your plan credits' };
-//         return {
-//           fraud_score: d.fraud_score, proxy: d.proxy, vpn: d.vpn, tor: d.tor,
-//           bot_status: d.bot_status, recent_abuse: d.recent_abuse,
-//           abuse_velocity: d.abuse_velocity, isp: d.ISP,
-//           organization: d.organization, connection_type: d.connection_type,
-//         };
-//       } catch(e) { return { error: e.message }; }
-//     }
-//   );
-// }
+async function fetchIPQS(ip, apiKey) {
+  if (!apiKey) return null;
+  return apiCall(
+    `/api/ipqs?ip=${encodeURIComponent(ip)}&key=${encodeURIComponent(apiKey)}`,
+    async () => {
+      try {
+        const r = await fetch(
+          `https://ipqualityscore.com/api/json/ip/${encodeURIComponent(apiKey)}/${encodeURIComponent(ip)}?strictness=1&allow_public_access_points=true`,
+          { signal: AbortSignal.timeout(10000) }
+        );
+        if (!r.ok) return { error: `HTTP ${r.status}` };
+        const d = await r.json();
+        if (!d.success) return { error: d.message };
+        return {
+          fraud_score: d.fraud_score, proxy: d.proxy, vpn: d.vpn, tor: d.tor,
+          bot_status: d.bot_status, recent_abuse: d.recent_abuse,
+          abuse_velocity: d.abuse_velocity, isp: d.ISP,
+          organization: d.organization, connection_type: d.connection_type,
+        };
+      } catch(e) { return { error: e.message }; }
+    }
+  );
+}
 
 // ─────────────────────────────────────────────
 //  MAIN ANALYSIS FLOW
@@ -1319,7 +1318,7 @@ function renderCard(ip) {
         <span class="expand-btn">▾</span>
       </div>
       <div class="card-detail">
-        ${isLoading ? buildSkeleton() : buildDetail(d, d.ip)}
+        ${isLoading ? buildSkeleton() : buildDetail(d)}
         ${!isLoading ? `<button class="copy-btn" onclick="event.stopPropagation();copyResult('${ip}')">⎘ Copy JSON</button>` : ''}
       </div>
     </div>`;
@@ -1356,7 +1355,7 @@ function buildSkeleton() {
   </div>`;
 }
 
-function buildDetail(d, ip) {
+function buildDetail(d) {
   const blocks = [];
 
   // ip-api block
@@ -1396,7 +1395,7 @@ function buildDetail(d, ip) {
       ${errSrcs.length ? `<br><span style="color:var(--red)">⚠ Errors: ${errSrcs.join(' · ')}</span>` : ''}
       ${!d.vt && !keys.vt ? '<br>ℹ Add VirusTotal key for 70+ engine coverage' : ''}
       ${!d.aipdb && !keys.aipdb ? '<br>ℹ Add AbuseIPDB key for community abuse reports' : ''}
-      // ${!d.ipqs && !keys.ipqs ? '<br>ℹ Add IPQualityScore key for proxy/VPN/bot detection' : ''}
+      ${!d.ipqs && !keys.ipqs ? '<br>ℹ Add IPQualityScore key for proxy/VPN/bot detection' : ''}
     </div>`;
 
   return `<div class="sources-grid">${blocks.join('')}</div>${verdictNote}`;
@@ -1535,51 +1534,51 @@ function buildAIPDBBlock(a, ip) {
   </div>`;
 }
 
-// function buildIPQSBlock(q, ip) {
-//   const ipqsUrl = ip
-//     ? `https://www.ipqualityscore.com/free-ip-lookup-proxy-vpn-test/lookup/${encodeURIComponent(ip)}`
-//     : 'https://www.ipqualityscore.com';
+function buildIPQSBlock(q, ip) {
+  const ipqsUrl = ip
+    ? `https://www.ipqualityscore.com/free-ip-lookup-proxy-vpn-test/lookup/${encodeURIComponent(ip)}`
+    : 'https://www.ipqualityscore.com';
 
-//   if (!q) return `<div class="source-block">
-//     <div class="src-header">
-//       <span class="src-name" style="color:var(--purple)">IPQualityScore</span>
-//       <span class="src-status src-skip">No Key</span>
-//       ${srcLink(ipqsUrl, 'View')}
-//     </div>
-//     <div class="src-rows">${srcRow('Status', 'Add IPQS API key to enable', 'v-amber')}</div>
-//   </div>`;
+  if (!q) return `<div class="source-block">
+    <div class="src-header">
+      <span class="src-name" style="color:var(--purple)">IPQualityScore</span>
+      <span class="src-status src-skip">No Key</span>
+      ${srcLink(ipqsUrl, 'View')}
+    </div>
+    <div class="src-rows">${srcRow('Status', 'Add IPQS API key to enable', 'v-amber')}</div>
+  </div>`;
 
-//   if (q.error) return `<div class="source-block">
-//     <div class="src-header">
-//       <span class="src-name" style="color:var(--purple)">IPQualityScore</span>
-//       <span class="src-status src-err">Error</span>
-//       ${srcLink(ipqsUrl, 'View')}
-//     </div>
-//     <div class="src-rows">${srcRow('Error', q.error, 'v-red')}</div>
-//   </div>`;
+  if (q.error) return `<div class="source-block">
+    <div class="src-header">
+      <span class="src-name" style="color:var(--purple)">IPQualityScore</span>
+      <span class="src-status src-err">Error</span>
+      ${srcLink(ipqsUrl, 'View')}
+    </div>
+    <div class="src-rows">${srcRow('Error', q.error, 'v-red')}</div>
+  </div>`;
 
-//   const fs = q.fraud_score || 0;
-//   const statusCls = fs >= 85 ? 'src-err' : fs >= 60 ? 'src-warn' : 'src-ok';
-//   let rows = '';
-//   rows += srcRow('Fraud Score', fs + '/100', fs >= 85 ? 'v-red' : fs >= 60 ? 'v-amber' : 'v-green');
-//   rows += srcRow('Proxy',       q.proxy ? 'YES' : 'No', q.proxy ? 'v-amber' : '');
-//   rows += srcRow('VPN',         q.vpn   ? 'YES' : 'No', q.vpn   ? 'v-amber' : '');
-//   rows += srcRow('Tor',         q.tor   ? 'YES' : 'No', q.tor   ? 'v-red'   : '');
-//   rows += srcRow('Bot Activity', q.bot_status ? 'YES' : 'No', q.bot_status ? 'v-red' : '');
-//   rows += srcRow('Recent Abuse', q.recent_abuse ? 'YES' : 'No', q.recent_abuse ? 'v-red' : '');
-//   if (q.connection_type) rows += srcRow('Conn. Type', q.connection_type);
-//   if (q.isp)             rows += srcRow('ISP', q.isp);
+  const fs = q.fraud_score || 0;
+  const statusCls = fs >= 85 ? 'src-err' : fs >= 60 ? 'src-warn' : 'src-ok';
+  let rows = '';
+  rows += srcRow('Fraud Score', fs + '/100', fs >= 85 ? 'v-red' : fs >= 60 ? 'v-amber' : 'v-green');
+  rows += srcRow('Proxy',       q.proxy ? 'YES' : 'No', q.proxy ? 'v-amber' : '');
+  rows += srcRow('VPN',         q.vpn   ? 'YES' : 'No', q.vpn   ? 'v-amber' : '');
+  rows += srcRow('Tor',         q.tor   ? 'YES' : 'No', q.tor   ? 'v-red'   : '');
+  rows += srcRow('Bot Activity', q.bot_status ? 'YES' : 'No', q.bot_status ? 'v-red' : '');
+  rows += srcRow('Recent Abuse', q.recent_abuse ? 'YES' : 'No', q.recent_abuse ? 'v-red' : '');
+  if (q.connection_type) rows += srcRow('Conn. Type', q.connection_type);
+  if (q.isp)             rows += srcRow('ISP', q.isp);
 
-//   return `<div class="source-block">
-//     <div class="src-header">
-//       <span class="src-name" style="color:var(--purple)">IPQualityScore</span>
-//       <span class="src-status ${statusCls}">Score: ${fs}</span>
-//       ${srcLink(ipqsUrl, 'View')}
-//     </div>
-//     <div class="src-rows">${rows}</div>
-//     ${scoreBar(fs)}
-//   </div>`;
-// }
+  return `<div class="source-block">
+    <div class="src-header">
+      <span class="src-name" style="color:var(--purple)">IPQualityScore</span>
+      <span class="src-status ${statusCls}">Score: ${fs}</span>
+      ${srcLink(ipqsUrl, 'View')}
+    </div>
+    <div class="src-rows">${rows}</div>
+    ${scoreBar(fs)}
+  </div>`;
+}
 
 // ─────────────────────────────────────────────
 //  PROGRESS & SUMMARY
@@ -1885,33 +1884,33 @@ async function fetchQuota() {
           } else { data.vt = { error: `HTTP ${r.status}` }; }
         } catch(e) { data.vt = { error: e.message }; }
       }
-    //   if (ipqsKey) {
-    //     try {
-    //       const r = await fetch(
-    //         `https://ipqualityscore.com/api/json/account/${encodeURIComponent(ipqsKey)}`,
-    //         { signal: AbortSignal.timeout(10000) });
-    //       if (r.ok) {
-    //         const d = await r.json();
-    //         data.ipqs = d.success
-    //           ? { credits_used: d.credits_used, credits_remaining: d.credits_remaining,
-    //               daily_limit: d.total_credits, plan: d.account_type || 'free' }
-    //           : { error: d.message };
-    //       } else { data.ipqs = { error: `HTTP ${r.status}` }; }
-    //     } catch(e) { data.ipqs = { error: e.message }; }
-    //   }
-    //   if (aipdbKey) {
-    //     data.aipdb = { error: 'CORS blocked locally — deploy to Vercel to see AbuseIPDB quota' };
-    //   }
-    // }
+      if (ipqsKey) {
+        try {
+          const r = await fetch(
+            `https://ipqualityscore.com/api/json/account/${encodeURIComponent(ipqsKey)}`,
+            { signal: AbortSignal.timeout(10000) });
+          if (r.ok) {
+            const d = await r.json();
+            data.ipqs = d.success
+              ? { credits_used: d.credits_used, credits_remaining: d.credits_remaining,
+                  daily_limit: d.total_credits, plan: d.account_type || 'free' }
+              : { error: d.message };
+          } else { data.ipqs = { error: `HTTP ${r.status}` }; }
+        } catch(e) { data.ipqs = { error: e.message }; }
+      }
+      if (aipdbKey) {
+        data.aipdb = { error: 'CORS blocked locally — deploy to Vercel to see AbuseIPDB quota' };
+      }
+    }
 
-//     renderQuotaCards(data, vtKey, aipdbKey, ipqsKey);
-//   } catch(e) {
-//     grid.innerHTML = `<div class="quota-loading" style="color:var(--red)">Failed to fetch quota: ${e.message}</div>`;
-//   }
+    renderQuotaCards(data, vtKey, aipdbKey, ipqsKey);
+  } catch(e) {
+    grid.innerHTML = `<div class="quota-loading" style="color:var(--red)">Failed to fetch quota: ${e.message}</div>`;
+  }
 
-//   btn.disabled = false;
-//   btn.textContent = '⟳ Check Quota';
-// }
+  btn.disabled = false;
+  btn.textContent = '⟳ Check Quota';
+}
 
 function renderQuotaNoKeys() {
   document.getElementById('quotaGrid').innerHTML = `
@@ -1923,10 +1922,10 @@ function renderQuotaNoKeys() {
       <div class="qc-head"><span class="qc-name" style="color:var(--amber)">AbuseIPDB</span></div>
       <div class="quota-note">Add API key above then click Check Quota</div>
     </div>
-    // <div class="quota-card quota-nokey">
-    //   <div class="qc-head"><span class="qc-name" style="color:var(--purple)">IPQualityScore</span></div>
-    //   <div class="quota-note">Add API key above then click Check Quota</div>
-    // </div>
+    <div class="quota-card quota-nokey">
+      <div class="qc-head"><span class="qc-name" style="color:var(--purple)">IPQualityScore</span></div>
+      <div class="quota-note">Add API key above then click Check Quota</div>
+    </div>
     <div class="quota-card quota-ok">
       <div class="qc-head"><span class="qc-name" style="color:var(--green)">ip-api</span><span class="qc-plan">Free</span></div>
       <div class="quota-stat"><span class="qs-label">Rate limit</span><span class="qs-val good">45 req/min</span></div>
@@ -2022,47 +2021,47 @@ function renderQuotaCards(data, vtKey, aipdbKey, ipqsKey) {
     </div>`;
   }
 
-//   // ── IPQualityScore ──
-//   if (!ipqsKey) {
-//     html += `<div class="quota-card quota-nokey">
-//       <div class="qc-head"><span class="qc-name" style="color:var(--purple)">IPQualityScore</span></div>
-//       <div class="quota-note">No key configured</div></div>`;
-//   } else if (data.ipqs?.error) {
-//     html += `<div class="quota-card quota-danger">
-//       <div class="qc-head"><span class="qc-name" style="color:var(--purple)">IPQualityScore</span></div>
-//       ${qStat('Status', data.ipqs.error, 'danger')}
-//     </div>`;
-//   } else if (data.ipqs) {
-//     const q   = data.ipqs;
-//     const rem = q.credits_remaining ?? q.lookups_allowed;
-//     const used = q.credits_used    ?? q.lookups_used;
-//     const lim  = q.daily_limit     ?? q.monthly_limit;
-//     const pct  = (used != null && lim) ? Math.round((used / lim) * 100) : null;
-//     const valCls = pct >= 90 ? 'danger' : pct >= 70 ? 'warn' : 'good';
-//     html += `<div class="quota-card ${quotaCls(used, lim)}">
-//       <div class="qc-head">
-//         <span class="qc-name" style="color:var(--purple)">IPQualityScore</span>
-//         ${q.plan ? `<span class="qc-plan">${q.plan}</span>` : ''}
-//       </div>
-//       ${used != null ? qStat('Credits used', used.toLocaleString(), valCls) : ''}
-//       ${rem  != null ? qStat('Remaining', rem.toLocaleString(), rem < 20 ? 'danger' : rem < 50 ? 'warn' : 'good') : ''}
-//       ${lim  != null ? qStat('Total credits', lim.toLocaleString()) : ''}
-//       ${quotaBar(used, lim)}
-//       <div class="quota-note">200 lookups/day on free plan</div>
-//     </div>`;
-//   }
+  // ── IPQualityScore ──
+  if (!ipqsKey) {
+    html += `<div class="quota-card quota-nokey">
+      <div class="qc-head"><span class="qc-name" style="color:var(--purple)">IPQualityScore</span></div>
+      <div class="quota-note">No key configured</div></div>`;
+  } else if (data.ipqs?.error) {
+    html += `<div class="quota-card quota-danger">
+      <div class="qc-head"><span class="qc-name" style="color:var(--purple)">IPQualityScore</span></div>
+      ${qStat('Status', data.ipqs.error, 'danger')}
+    </div>`;
+  } else if (data.ipqs) {
+    const q   = data.ipqs;
+    const rem = q.credits_remaining ?? q.lookups_allowed;
+    const used = q.credits_used    ?? q.lookups_used;
+    const lim  = q.daily_limit     ?? q.monthly_limit;
+    const pct  = (used != null && lim) ? Math.round((used / lim) * 100) : null;
+    const valCls = pct >= 90 ? 'danger' : pct >= 70 ? 'warn' : 'good';
+    html += `<div class="quota-card ${quotaCls(used, lim)}">
+      <div class="qc-head">
+        <span class="qc-name" style="color:var(--purple)">IPQualityScore</span>
+        ${q.plan ? `<span class="qc-plan">${q.plan}</span>` : ''}
+      </div>
+      ${used != null ? qStat('Credits used', used.toLocaleString(), valCls) : ''}
+      ${rem  != null ? qStat('Remaining', rem.toLocaleString(), rem < 20 ? 'danger' : rem < 50 ? 'warn' : 'good') : ''}
+      ${lim  != null ? qStat('Total credits', lim.toLocaleString()) : ''}
+      ${quotaBar(used, lim)}
+      <div class="quota-note">200 lookups/day on free plan</div>
+    </div>`;
+  }
 
-//   // ── ip-api (always shown, always free) ──
-//   html += `<div class="quota-card quota-ok">
-//     <div class="qc-head"><span class="qc-name" style="color:var(--green)">ip-api</span><span class="qc-plan">Free</span></div>
-//     ${qStat('Rate limit', '45 req / min', 'good')}
-//     ${qStat('Key required', 'No', 'good')}
-//     ${qStat('Daily limit', 'Unlimited', 'good')}
-//     <div class="quota-note">No account needed · geo + ASN data</div>
-//   </div>`;
+  // ── ip-api (always shown, always free) ──
+  html += `<div class="quota-card quota-ok">
+    <div class="qc-head"><span class="qc-name" style="color:var(--green)">ip-api</span><span class="qc-plan">Free</span></div>
+    ${qStat('Rate limit', '45 req / min', 'good')}
+    ${qStat('Key required', 'No', 'good')}
+    ${qStat('Daily limit', 'Unlimited', 'good')}
+    <div class="quota-note">No account needed · geo + ASN data</div>
+  </div>`;
 
-//   document.getElementById('quotaGrid').innerHTML = html;
-// }
+  document.getElementById('quotaGrid').innerHTML = html;
+}
 
 // ─────────────────────────────────────────────
 //  INIT
